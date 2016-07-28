@@ -1,25 +1,26 @@
 from utils import IoU
 from skimage import io
 import tensorflow as tf
-import imdb
-
+from imdb import load_imdb
+import numpy as np
 
 
 def conv2d(x, W, b, strides = 1):
 
     # input [ batch , height , width , channels ]
     # filters [ width , height , channels , output channels (number of filters)]
-
+    #print x.get_shape()
+    #print W.get_shape()
     x = tf.nn.conv2d(x, W, strides = [1, strides, strides, 1], padding = 'SAME')
     x = tf.nn.bias_add(x, b)
     return tf.nn.relu(x)
 
 def maxpool2d(x, k = 2):
-    return tf.nn.max_pool(x, ksize = [1, k, k, 1], stride = [1, k, k, 1], padding = 'SAME')
+    return tf.nn.max_pool(x, ksize = [1, k, k, 1], strides = [1, k, k, 1], padding = 'SAME')
 
 def conv_net(x, weights, biases, dropout):
 
-    x = tf.reshape(x, shape = [-1, 448, 448, 1])
+    x = tf.reshape(x, shape = [-1, 448, 448, 3])
 
     # Convolution Layer
 
@@ -71,9 +72,6 @@ def conv_net(x, weights, biases, dropout):
     fc2 = tf.reshape(fc2, [-1, 49, 30])
     fc2 = tf.nn.relu(fc2)
 
-
-    output = tf.add(tf.matmul(fc2, weights['out']), biases['out'])
-
     #fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
     #fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
     #fc1 = tf.nn.relu(fc1)
@@ -83,7 +81,7 @@ def conv_net(x, weights, biases, dropout):
 
     #out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
 
-    return output
+    return fc2
 
 weights = {
 
@@ -173,7 +171,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 n_input = 448 * 448
 n_classes = 2
 x = tf.placeholder(tf.float32, [None, n_input]) # feed_dict (unknown batch , features)
-y = tf.placeholder(tf.float32, [None, n_classes]) # feed_dict (unknown batch, prob for each classes)
+y = tf.placeholder(tf.float32, [None, 5]) # feed_dict (unknown batch, prob for each classes)
 
 
 B = 2
@@ -182,27 +180,33 @@ is_obj = None
 not_obj = None
 
 response_threshold = 0.5
-def get_confidence(pred, gt, B):
+def get_confidence(pred, y, B):
     
     confidence = None
-
-    shape = (pred.shape[0],pred.shape[1],B) 
-
+    
+    #print 'pred_shape : ', pred.get_shape()[1]
+    shape = (-1,int(pred.get_shape()[1]),B) 
+    #print shape
     for b in xrange(B):
-
+        
+        #print 'pred : ', pred[ : , : , b * 5 : b * 5 + 4].get_shape()
+        
         if confidence == None:
-            confidence = IoU(pred[ : , : , b * 5 : b * 5 + 4], gt[ : , : , b * 5 : b * 5 + 4])
+            confidence = IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])
         else:
-            confidence = np.hstack(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], gt[ : , : , b * 5 : b * 5 + 4]))
+           # print confidence.dtype
+            
+            confidence = tf.concat(1,(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])))
+            print confidence.get_shape()
     
 
     """
     confidence shape = [batch, cell, B]
 
     """
-    confidence = np.reshape(confidence,shape)
+    confidence = tf.reshape(confidence,shape)
     
-    assert confidence.dtype == float
+    assert confidence.dtype == tf.float32
 
     return confidence
 
@@ -234,51 +238,28 @@ def is_appear_in_cell(confidence):
 training 
 
 """
-
+print 'start training ... '
 init = tf.initialize_all_variables()
-
-with tf.Session() as sess:
-    
-    sess.run(init)
-
-    for epoch in range(training_epochs):
-
-        loss = 0
-
-        total_batch = int( / batch_size)
-
-        # Loop over all batches
-
-        for i in range(total_batch):
-
-            batch_x, batch_y = 
-
-
 lcoord = 5
 lnoobj = .5
 
-pred = conv_net(x, weights, biases, stride = 1)
-
-confidence = get_confidence(pred, gt, B)
-
+pred = conv_net(x, weights, biases, 1)
+display_step = 20
+confidence = get_confidence(pred, y, B)
 is_res = is_responsible(confidence)
 is_appear = is_appear_in_cell(confidence)
 not_res = not is_res
-
-batch_x, batch_y = load_imdb('plate') 
+images, objects = load_imdb('plate') 
 
 loss = None
+
+print 'dadawdawdwd'
 
 for b in xrange(B):
     
     """
     B = [(SxS) x B]
 
-    x, y, w, h, c
-    is_res should be a vector
-    
-    normalization
-    
     x, y => relative to cell
     w, h => relative to image
     
@@ -293,9 +274,17 @@ for b in xrange(B):
 
     
     if loss == None:
-        loss = lcoord * is_res[:,:,b] * (dx+dy) + lcoord * is_res[:,:,b] * (dw+dh) + is_res[:,:,b] * dc + lnoobj * not_res[:,:,b] * dc
+        
+        loss = lcoord * is_res[:,:,b] * (dx+dy) + \
+                lcoord * is_res[:,:,b] * (dw+dh) + \
+                is_res[:,:,b] * dc + \
+                lnoobj * not_res[:,:,b] * dc
     else:
-        loss += lcoord * is_res[:,:,b] * (dx+dy) + lcoord * is_res[:,:,b] * (dw+dh) + is_res[:,:,b] * dc + lnoobj * not_res[:,:,b] * dc
+
+        loss += lcoord * is_res[:,:,b] * (dx+dy) + \
+                lcoord * is_res[:,:,b] * (dw+dh) + \
+                is_res[:,:,b] * dc + \
+                lnoobj * not_res[:,:,b] * dc
     
     index = b + 1
 
@@ -305,6 +294,30 @@ assert len(y[:,:,b:]) == num_classes
 
 loss = tf.reduce_mean(loss)
 
-s = tf.Session()
 
-s.run(pred, feed_dict = {x:batch_x, y:batch_y})
+with tf.Session() as sess:
+    
+    sess.run(init)
+    step = 1
+
+    while step * batch_size < training_iters:
+
+        batch_x = images[i * batch_size : (i+1) * batch_size]
+        batch_y = objects[i * batch_size : (i+1) * batch_size]
+        
+        sess.run(optimizer, 
+                feed_dict = {
+                      x:batch_x,
+                      y:batch_y})
+
+        if step % display_step == 0:
+            
+            loss, acc = sess([cost, accuracy], 
+                            feed_dict = { 
+                                x:batch_x,
+                                y:batch_y})
+
+            print "Iter " , str(step*batch_size) + ", Minibatch Loss= " ,"{:.6f}".format(loss) , ", Training Accuracy= " ,"{:.5f}".format(acc)
+            step += 1
+
+    print "Optimization Finished!"

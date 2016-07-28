@@ -7,6 +7,7 @@ import yolo_pb2
 import xml.etree.ElementTree as ET
 import numpy as np
 import yolo_pb2, base64
+import tensorflow as tf
 from StringIO import StringIO
 from PIL import Image
 from os.path import join as Path
@@ -20,15 +21,6 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 """
 
-
-class gt_obj(object):
-
-    def __init__(self, coord, cls):
-
-        self.coord = coord
-        self.cls = cls
-
-g = Pool()
 
 def get_data_from_list(train_list):
 
@@ -106,9 +98,9 @@ def merge_roidbs(filename, datum):
         o.width = int(xmax - xmin)
         o.height = int(ymax - ymin)
         o.cls = cls
-    assert len(object) > 0
+    assert len(objects) > 0
 
-    datum.object_num = len(object)
+    datum.object_num = len(objects)
     return datum
 
 def generate_caches(database, lists):
@@ -177,9 +169,9 @@ def test_proto():
 
 
 def load_imdb(database):
-
+    start = time.time()
     env = lmdb.open(database, readonly = True)
-    
+    print 'loading database .... '
     objects = None
     images = []
 
@@ -218,25 +210,32 @@ def load_imdb(database):
                 w = datum.object[idx].width
                 h = datum.object[idx].height
                 cls = datum.object[idx].cls
+
                 if objects == None:
                     objects = np.array([x,y,w,h,cls])
                 else:
                     
-                    objects = objects.vstack(objects, np.array([x,y,w,h,cls]))
+                    objects = np.vstack((objects, np.array([x,y,w,h,cls])))
 
                 images.append(image)
-
-                assert len(objects)  == len(images)
+                #print len(objects)
+                #print len(images)
 
             num += 1
 
+    #print len(objects)
+    #print len(images)
+
+    assert len(objects) == len(images)
+
+    print 'consume : ', time.time() - start
     return images, objects 
 
 
 
 #load_annotation_from_xml('Annotations/xmls/multi/m_1.xml')
-#generate_caches('testdb', 'train.txt')
-load_imdb('testdb')
+generate_caches('plate', 'train.txt')
+#load_imdb('testdb')
 
 """
 threads = []
