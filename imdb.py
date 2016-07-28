@@ -21,15 +21,12 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 """
 
 
-class ground_truth_object(object):
+class gt_obj(object):
 
-    def __init__(index, coord):
+    def __init__(self, coord, cls):
 
-        self.index = index
         self.coord = coord
-
-
-
+        self.cls = cls
 
 g = Pool()
 
@@ -183,7 +180,7 @@ def load_imdb(database):
 
     env = lmdb.open(database, readonly = True)
     
-    objects = []
+    objects = None
     images = []
 
     with env.begin() as txn:
@@ -194,7 +191,7 @@ def load_imdb(database):
 
             raw = txn.get(str(num))
             
-            if raw_datum is None:
+            if raw is None:
                 break
 
             datum = yolo_pb2.Image()
@@ -213,9 +210,6 @@ def load_imdb(database):
 
             image = image.reshape((height, width, channels))
             
-            images.append(image)
-            
-            assert len(images) == num + 1
             
             for idx in xrange(datum.object_num):
 
@@ -224,24 +218,21 @@ def load_imdb(database):
                 w = datum.object[idx].width
                 h = datum.object[idx].height
                 cls = datum.object[idx].cls
-                objects.append(ground_truth_object(num, [x,y,w,h], cls))
+                if objects == None:
+                    objects = np.array([x,y,w,h,cls])
+                else:
+                    
+                    objects = objects.vstack(objects, np.array([x,y,w,h,cls]))
+
+                images.append(image)
+
+                assert len(objects)  == len(images)
 
             num += 1
 
     return images, objects 
 
 
-        """
-        flat_x = np.fromstring(dataum.data, dtype = np.uint8)
-        print dataum.object
-        print flat_x.shape
-        x = flat_x.reshape(dataum.channels, dataum.height, dataum.width)
-        print x.shape
-        #io.imshow(x.transpose([1,2,0]))
-        """
-        #io.imshow(image)
-        #io.imsave('daw.jpg', image)
-        #io.show()
 
 #load_annotation_from_xml('Annotations/xmls/multi/m_1.xml')
 #generate_caches('testdb', 'train.txt')

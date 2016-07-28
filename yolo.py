@@ -229,12 +229,45 @@ def is_appear_in_cell(confidence):
     
     return np.sum(confidence, axis = 2) > 0
     
+"""
+
+training 
+
+"""
+
+init = tf.initialize_all_variables()
+
+with tf.Session() as sess:
+    
+    sess.run(init)
+
+    for epoch in range(training_epochs):
+
+        loss = 0
+
+        total_batch = int( / batch_size)
+
+        # Loop over all batches
+
+        for i in range(total_batch):
+
+            batch_x, batch_y = 
+
+
+lcoord = 5
+lnoobj = .5
+
+pred = conv_net(x, weights, biases, stride = 1)
 
 confidence = get_confidence(pred, gt, B)
 
 is_res = is_responsible(confidence)
 is_appear = is_appear_in_cell(confidence)
 not_res = not is_res
+
+batch_x, batch_y = load_imdb('plate') 
+
+loss = None
 
 for b in xrange(B):
     
@@ -250,36 +283,28 @@ for b in xrange(B):
     w, h => relative to image
     
     pred = [batch, SxS, 5B+C]
+
     """
-    x = (pred[:,:,b*5+0] - pred[:,:,b*5+0]) ** 2
-    y = (pred[:,:,b*5+1] - pred[:,:,b*5+1]) ** 2
-    w = (pred[:,:,b*5+2]**0.5 - pred[:,:,b*5+2]**0.5) ** 2
-    h = (pred[:,:,b*5+3]**0.5 - pred[:,:,b*5+3]**0.5) ** 2
-    c = (pred[:,:,b*5+4] - pred[:,:,b*5+4]) ** 2
+    dx = (pred[:,:,b*5+0] - y[:,0]) ** 2
+    dy = (pred[:,:,b*5+1] - y[:,1]) ** 2
+    dw = (pred[:,:,b*5+2]**0.5 - y[:,2]**0.5) ** 2
+    dh = (pred[:,:,b*5+3]**0.5 - y[:,3]**0.5) ** 2
+    dc = (pred[:,:,b*5+4] - y[:,4]) ** 2
 
-
-    loss = lambda_coord * is_res[:,:,b] * (x+y) + lambda_coord * is_res[:,:,b] * (w+h) + is_res[:,:,b] * c + lambda_noobj * not_res[:,:,b] * c
-
+    
+    if loss == None:
+        loss = lcoord * is_res[:,:,b] * (dx+dy) + lcoord * is_res[:,:,b] * (dw+dh) + is_res[:,:,b] * dc + lnoobj * not_res[:,:,b] * dc
+    else:
+        loss += lcoord * is_res[:,:,b] * (dx+dy) + lcoord * is_res[:,:,b] * (dw+dh) + is_res[:,:,b] * dc + lnoobj * not_res[:,:,b] * dc
+    
     index = b + 1
 
 loss += is_appear * sum((y[:,:,b:] - pred[:,:,b:]) ** 2)
 
 assert len(y[:,:,b:]) == num_classes
 
-
-
-
-print 'x : ',x.get_shape()
-
-batch_x, batch_y = 
-
-pred = conv_net(x, weights, biases, 1)
-
-loss = tf.reduce_mean()
-
-
-lambda_coord = 5
-lambda_noobj = .5
+loss = tf.reduce_mean(loss)
 
 s = tf.Session()
+
 s.run(pred, feed_dict = {x:batch_x, y:batch_y})
