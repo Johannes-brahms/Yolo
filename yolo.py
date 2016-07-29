@@ -5,6 +5,19 @@ from imdb import load_imdb
 import numpy as np
 
 
+class cfg(object):
+
+    def __init__(self, cls_name):
+        self.cls_num = len(cls_name)
+        self.cls_name = cls_name
+
+
+plate_cfg = cfg(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','plate'])
+
+
+
+
+
 def conv2d(x, W, b, strides = 1):
 
     # input [ batch , height , width , channels ]
@@ -156,25 +169,13 @@ biases = {
 }
 
 
-
-
-
-"""
-x, y, w, h   ====>  between 0 , 1
-
-
-"""
-from tensorflow.examples.tutorials.mnist import input_data
-#mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
-
-
 n_input = 448 * 448
-n_classes = 2
-x = tf.placeholder(tf.float32, [None, n_input]) # feed_dict (unknown batch , features)
-y = tf.placeholder(tf.float32, [None, 5]) # feed_dict (unknown batch, prob for each classes)
-
-
+n_classes = 20
 B = 2
+x = tf.placeholder(tf.float32, [None, n_input]) # feed_dict (unknown batch , features)
+y = tf.placeholder(tf.float32, [None, n_classes + 4]) # feed_dict (unknown batch, prob for each classes)
+batch_size = 64
+
 
 is_obj = None
 not_obj = None
@@ -208,6 +209,7 @@ def get_confidence(pred, y, B):
     
     assert confidence.dtype == tf.float32
 
+    print confidence.get_shape()
     return confidence
 
 def is_responsible(confidence):
@@ -219,11 +221,29 @@ def is_responsible(confidence):
 
     """
 
-    max_iou = np.amax(confidence, axis = 2)
+    _, cells, B = list(confidence.get_shape())
+    max_iou = tf.reduce_max(confidence, 2)
+    print 'batch_size :',batch_size
+    print 'cells :', cells
+    print 'B : ', B
+    print 'max_iou : ', max_iou.get_shape()
     
-    is_res = (confidence >= max_iou)
+    for b in xrange(B-1):
+        max_iou = tf.concat(1,[max_iou,max_iou])
 
-    assert is_res.dtype == bool and confidence.dtype == float and is_res.shape == confidence.shape
+    max_iou = tf.reshape(max_iou,[batch_size, int(cells), int(B)])
+    is_res = tf.greater_equal(confidence, max_iou)
+    
+    print 'is_res : ', is_res.get_shape()
+    print 'is_res : ', is_res.dtype
+    print 'conf : ', confidence.dtype
+    print 'is_res : ',tf.shape(is_res)
+    print 'confidence : ',tf.shape(confidence)
+    print 'confidence : ',confidence.get_shape()
+    assert is_res.dtype == bool
+
+    assert confidence.dtype == tf.float32 
+    #assert is_res.get_shape() == confidence.get_shape()
     
     return is_res
     
@@ -231,29 +251,39 @@ def is_responsible(confidence):
 
 def is_appear_in_cell(confidence):
     
-    return np.sum(confidence, axis = 2) > 0
+    
+    return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size,49)))
+    #return tf.reduce_all(confidence,2)
     
 """
 
 training 
 
 """
+
+
+
+
+cls_name = ['plate','dog']
+
 print 'start training ... '
 init = tf.initialize_all_variables()
-lcoord = 5
-lnoobj = .5
+lcoord = tf.constant(5, dtype = tf.float32)
+lnoobj = tf.constant(0.5, dtype = tf.float32)
 
 pred = conv_net(x, weights, biases, 1)
 display_step = 20
 confidence = get_confidence(pred, y, B)
 is_res = is_responsible(confidence)
 is_appear = is_appear_in_cell(confidence)
-not_res = not is_res
-images, objects = load_imdb('plate') 
 
+
+not_res = tf.logical_not(is_res)
+is_res = tf.cast(is_res, tf.float32)
+not_res = tf.cast(is_res, tf.float32)
+images, objects = load_imdb('plate', cls_name) 
 loss = None
 
-print 'dadawdawdwd'
 
 for b in xrange(B):
     
@@ -265,13 +295,21 @@ for b in xrange(B):
     
     pred = [batch, SxS, 5B+C]
 
-    """
+    
     dx = (pred[:,:,b*5+0] - y[:,0]) ** 2
     dy = (pred[:,:,b*5+1] - y[:,1]) ** 2
     dw = (pred[:,:,b*5+2]**0.5 - y[:,2]**0.5) ** 2
     dh = (pred[:,:,b*5+3]**0.5 - y[:,3]**0.5) ** 2
     dc = (pred[:,:,b*5+4] - y[:,4]) ** 2
+    """
+    
+    dx = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+0],[-1,-1,1]),tf.slice(y,[0,0],[-1,1])),2)
+    dy = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+1],[-1,-1,1]),tf.slice(y,[0,1],[-1,1])),2)
+    dw = tf.pow(tf.sub(tf.pow(tf.slice(pred,[0,0,b*5+2],[-1,-1,1]),0.5),tf.pow(tf.slice(y,[0,2],[-1,1]),0.5)),2)
+    dh = tf.pow(tf.sub(tf.pow(tf.slice(pred,[0,0,b*5+3],[-1,-1,1]),0.5),tf.pow(tf.slice(y,[0,3],[-1,1]),0.5)),2)
 
+    dc = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+4],[-1,-1,1]),tf.slice(y,[0,4],[-1,1])),2)
+    """
     
     if loss == None:
         
@@ -287,8 +325,44 @@ for b in xrange(B):
                 lnoobj * not_res[:,:,b] * dc
     
     index = b + 1
+    """
+    
+    if loss == None:
+        
+        print 
+        print tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1]),tf.int32).dtype
+        print tf.add(dx,dy).dtype
+        #print lcoord.dtype
+        test1 = tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1]),tf.float32)
+        #test = tf.mul(lcoord, tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1])))
+        
+        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+        loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
+        loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
+    
+        loss = tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj))
+    
+    else:
 
+        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+        loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
+        loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
+        
+        loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
+    
+    index = b + 1
+    """
 loss += is_appear * sum((y[:,:,b:] - pred[:,:,b:]) ** 2)
+"""
+#print index
+#tmp1 =  tf.slice(pred,[0,0,5 * index],[-1,-1,-1])
+#print tmp1.get_shape()
+#tmp2 = tf.slice(y,[0,5],[-1,-1])
+#print tmp2.get_shape()
+#tmp = tf.pow(tf.reduce_sum(tf.slice(y,[0,b],[-1,-1])),2)
+loss = tf.add(loss, tf.mul(is_appear, tf.pow(tf.reduce_sum(tf.sub(tf.slice(y,[0,4],[-1,-1]), tf.slice(pred,[0,0,5 * index],[-1,-1,-1]))),2)))
 
 assert len(y[:,:,b:]) == num_classes
 

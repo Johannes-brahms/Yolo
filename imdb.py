@@ -102,6 +102,17 @@ def merge_roidbs(filename, datum):
 
     datum.object_num = len(objects)
     return datum
+def get_index_by_name(cls, cls_name):
+    
+    cls_num = len(cls_name)
+    index = cls_name.index(cls)
+    gt = np.zeros(cls_num)
+    
+    gt[index] = 1
+    print gt
+    print gt.shape
+    return gt 
+
 
 def generate_caches(database, lists):
 
@@ -168,7 +179,7 @@ def test_proto():
         txn.put('test', datum.SerializeToString())
 
 
-def load_imdb(database):
+def load_imdb(database, cls_name):
     start = time.time()
     env = lmdb.open(database, readonly = True)
     print 'loading database .... '
@@ -210,12 +221,12 @@ def load_imdb(database):
                 w = datum.object[idx].width
                 h = datum.object[idx].height
                 cls = datum.object[idx].cls
+                gt_cls = get_index_by_name(cls, cls_name)
 
                 if objects == None:
-                    objects = np.array([x,y,w,h,cls])
-                else:
-                    
-                    objects = np.vstack((objects, np.array([x,y,w,h,cls])))
+                    objects = np.hstack((np.array([x,y,w,h]),gt_cls))
+                else:    
+                    objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
 
                 images.append(image)
                 #print len(objects)
