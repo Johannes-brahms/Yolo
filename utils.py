@@ -5,11 +5,11 @@ def IoU(bbox,gt):
     bbox here is a vector , a cell has B bbox ,
     
     """
-    print bbox[0,:,0]
-    print gt[:,0]
-    print 'IoU rate : '
+    #print bbox[0,:,0]
+    #print gt[:,0]
+    #print 'IoU rate : '
     x1 = tf.maximum(bbox[:,:,0], gt[:,0])
-    print x1.get_shape()
+    #print x1.get_shape()
     y1 = tf.maximum(bbox[:,:,1], gt[:,1])
     x2 = tf.maximum(bbox[:,:,2], gt[:,2])
     y2 = tf.maximum(bbox[:,:,3], gt[:,3])
@@ -30,14 +30,14 @@ def IoU(bbox,gt):
     
     ground_truth = tf.mul(tf.add(tf.sub(gt[:,2], gt[:,0]), 1), tf.add(tf.sub(gt[:,3],gt[:,1]),1))
     
-    print 'gt: xxx : ', ground_truth.get_shape()
+    #print 'gt: xxx : ', ground_truth.get_shape()
     #print bounding_box.shape
     #print ground_truth.shape
 
     #ground_truth = ground_truth.reshape(len(ground_truth))
     #print ground_truth.shape
     iou = inter / tf.sub(tf.add(bounding_box,ground_truth),inter)
-    print 'iou : {}'.format(iou.get_shape())
+    #print 'iou : {}'.format(iou.get_shape())
     #print 'inter : {}'.format(inter.shape)
     #print 'IoU : {}'. format(iou)
 

@@ -14,9 +14,14 @@ class cfg(object):
 
 plate_cfg = cfg(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','plate'])
 
-
-
-
+batch_size = 5
+n_input = 448 * 448
+B = 2
+S = 7
+cls_name = ['plate','dog']
+n_class = len(cls_name)
+learning_rate = 0.01
+training_iters = 1000
 
 def conv2d(x, W, b, strides = 1):
 
@@ -37,9 +42,9 @@ def conv_net(x, weights, biases, dropout):
 
     # Convolution Layer
 
-    print weights['conv21'].get_shape()
-    print x.get_shape()
-    print biases['conv21'].get_shape()
+    #print weights['conv21'].get_shape()
+    #print x.get_shape()
+    #print biases['conv21'].get_shape()
     conv1 = conv2d(x, weights['conv1'], biases['conv1'], strides = 2)
     conv1 = maxpool2d(conv1, k = 2)
 
@@ -82,7 +87,7 @@ def conv_net(x, weights, biases, dropout):
     # fc1 = tf.nn.dropout(fc1, dropout)
 
     fc2 = tf.add(tf.matmul(fc1, weights['fc2']), biases['fc2'])
-    fc2 = tf.reshape(fc2, [-1, 49, 30])
+    fc2 = tf.reshape(fc2, [-1, S * S, n_class + 5 * B])
     fc2 = tf.nn.relu(fc2)
 
     #fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
@@ -128,13 +133,13 @@ weights = {
     'conv24': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
 
     'fc1':tf.Variable(tf.random_normal([7 * 7 * 1024, 4096])),
-    'fc2':tf.Variable(tf.random_normal([4096, 7 * 7 * 30])),
+    'fc2':tf.Variable(tf.random_normal([4096, 7 * 7 * (n_class + 5 * B)])),
     #'out':tf.Variable(tf.random_normal([]))
 }
 
 biases = {
 
-    'conv1': tf.Variable(tf.random_normal(64)),
+    'conv1': tf.Variable(tf.random_normal([64])),
 
     'conv2': tf.Variable(tf.random_normal([192])),
 
@@ -164,52 +169,90 @@ biases = {
     'conv24': tf.Variable(tf.random_normal([1024])),
 
     'fc1':tf.Variable(tf.random_normal([4096])),
-    'fc2':tf.Variable(tf.random_normal([7 * 7 * 30])),
+    'fc2':tf.Variable(tf.random_normal([S * S * (n_class + 5 * B)])),
     #'out':tf.Variable(tf.random_normal([])),
 }
 
 
-n_input = 448 * 448
-n_classes = 20
-B = 2
-x = tf.placeholder(tf.float32, [None, n_input]) # feed_dict (unknown batch , features)
-y = tf.placeholder(tf.float32, [None, n_classes + 4]) # feed_dict (unknown batch, prob for each classes)
-batch_size = 64
+x = tf.placeholder(tf.float32, [None, n_input * 3]) # feed_dict (unknown batch , features)
+y = tf.placeholder(tf.float32, [None, n_class + 4]) # feed_dict (unknown batch, prob for each classes)
 
 
 is_obj = None
 not_obj = None
 
 response_threshold = 0.5
+
+#def confidence_equal_zero():
+#    print 'zeros'
+#    return tf.constant(11)
+    #return IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])
+
+#def confidence_not_equal_zero():
+#    print 'not zeros ...'
+#    return tf.constant(2)
+    #return tf.concat(1,(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])))
 def get_confidence(pred, y, B):
     
-    confidence = None
-    
+    #confidence = tf.Variable(np.array([]), tf.float32)
+
+    #zero = tf.constant(np.array([]))
+
     #print 'pred_shape : ', pred.get_shape()[1]
     shape = (-1,int(pred.get_shape()[1]),B) 
+    
+    """
     #print shape
-    for b in xrange(B):
-        
+    #   for b in xrange(B):
+        print 'B : ', b
         #print 'pred : ', pred[ : , : , b * 5 : b * 5 + 4].get_shape()
-        
-        if confidence == None:
+        #xx = tf.constant(1)
+        #yy = tf.constant(2)
+        #print 'true or not ' , xx < yy
+        print 'tf.test 0 : ', IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4]).get_shape()
+        print 'con ' , confidence.dtype
+        print 'confid : ', confidence.get_shape()
+        #print 'tf.test 1 : ', tf.concat(1,(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4]))).get_shape()
+        #confidence = tf.cond(
+                #tf.equal(confidence, zero),
+                #confidence_equal_zero,
+                #confidence_not_equal_zero)
+     """
+    print 'prediction shape : ', pred.get_shape()
+    b = 0
+    print 'iou pred shape 0 : ',tf.slice(pred,[0,0,b*5],[-1,-1,4]).get_shape()
+    b = 0
+        #confidence = tf.concat(0,(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])))
+    #confidence = IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])
+    confidence = IoU(tf.slice(pred,[0,0,b*5],[-1,-1,4]), y[:,:4])
+    b += 1
+    test = tf.slice(pred,[0,0,5],[-1,-1,4])
+    print 'test shape ', test.get_shape()
+    confidence = tf.concat(1,(confidence,IoU(tf.slice(pred,[0,0,b * 5],[-1,-1,4]), y[ : ,:4])))
+         #       tf.concat(1,(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4]))))
+    """
+     if confidence == 0:
+            print 'iou xxx ', IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4]).get_shape() 
             confidence = IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])
-        else:
+     else:
            # print confidence.dtype
-            
+            print  IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4]).get_shape()         
+            print 'pred : ',pred[ : , : , b * 5 : b * 5 + 4]
+            print 'y :', y[ : , b * 5 : b * 5 + 4]
+            print confidence.get_shape 
             confidence = tf.concat(1,(confidence,IoU(pred[ : , : , b * 5 : b * 5 + 4], y[ : , b * 5 : b * 5 + 4])))
             print confidence.get_shape()
-    
-
+        
+     """
+        #print 'confidence shape : ', confidence.get_shape
     """
-    confidence shape = [batch, cell, B]
-
+        confidence shape = [batch, cell, B]
     """
     confidence = tf.reshape(confidence,shape)
     
     assert confidence.dtype == tf.float32
 
-    print confidence.get_shape()
+    #print confidence.get_shape()
     return confidence
 
 def is_responsible(confidence):
@@ -234,12 +277,12 @@ def is_responsible(confidence):
     max_iou = tf.reshape(max_iou,[batch_size, int(cells), int(B)])
     is_res = tf.greater_equal(confidence, max_iou)
     
-    print 'is_res : ', is_res.get_shape()
-    print 'is_res : ', is_res.dtype
-    print 'conf : ', confidence.dtype
-    print 'is_res : ',tf.shape(is_res)
-    print 'confidence : ',tf.shape(confidence)
-    print 'confidence : ',confidence.get_shape()
+    #print 'is_res : ', is_res.get_shape()
+    #print 'is_res : ', is_res.dtype
+    #print 'conf : ', confidence.dtype
+    #print 'is_res : ',tf.shape(is_res)
+    #print 'confidence : ',tf.shape(confidence)
+    #print 'confidence : ',confidence.get_shape()
     assert is_res.dtype == bool
 
     assert confidence.dtype == tf.float32 
@@ -250,7 +293,6 @@ def is_responsible(confidence):
 
 
 def is_appear_in_cell(confidence):
-    
     
     return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size,49)))
     #return tf.reduce_all(confidence,2)
@@ -264,26 +306,27 @@ training
 
 
 
-cls_name = ['plate','dog']
 
 print 'start training ... '
-init = tf.initialize_all_variables()
 lcoord = tf.constant(5, dtype = tf.float32)
 lnoobj = tf.constant(0.5, dtype = tf.float32)
 
 pred = conv_net(x, weights, biases, 1)
 display_step = 20
+
 confidence = get_confidence(pred, y, B)
 is_res = is_responsible(confidence)
 is_appear = is_appear_in_cell(confidence)
-
-
 not_res = tf.logical_not(is_res)
+
 is_res = tf.cast(is_res, tf.float32)
 not_res = tf.cast(is_res, tf.float32)
-images, objects = load_imdb('plate', cls_name) 
-loss = None
+is_appear = tf.cast(is_appear, tf.float32)
 
+images, objects = load_imdb('plate', cls_name) 
+
+images =np.array(images)
+loss = None
 
 for b in xrange(B):
     
@@ -302,13 +345,13 @@ for b in xrange(B):
     dh = (pred[:,:,b*5+3]**0.5 - y[:,3]**0.5) ** 2
     dc = (pred[:,:,b*5+4] - y[:,4]) ** 2
     """
-    
+    print 'dx :', tf.slice(y,[0,0],[-1,1]).get_shape()
     dx = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+0],[-1,-1,1]),tf.slice(y,[0,0],[-1,1])),2)
     dy = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+1],[-1,-1,1]),tf.slice(y,[0,1],[-1,1])),2)
     dw = tf.pow(tf.sub(tf.pow(tf.slice(pred,[0,0,b*5+2],[-1,-1,1]),0.5),tf.pow(tf.slice(y,[0,2],[-1,1]),0.5)),2)
     dh = tf.pow(tf.sub(tf.pow(tf.slice(pred,[0,0,b*5+3],[-1,-1,1]),0.5),tf.pow(tf.slice(y,[0,3],[-1,1]),0.5)),2)
 
-    dc = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+4],[-1,-1,1]),tf.slice(y,[0,4],[-1,1])),2)
+    dc = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+4],[-1,-1,1]),1),2) #tf.slice(y,[0,4],[-1,1])),2)
     """
     
     if loss == None:
@@ -329,7 +372,6 @@ for b in xrange(B):
     
     if loss == None:
         
-        print 
         print tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1]),tf.int32).dtype
         print tf.add(dx,dy).dtype
         #print lcoord.dtype
@@ -360,30 +402,62 @@ loss += is_appear * sum((y[:,:,b:] - pred[:,:,b:]) ** 2)
 #tmp1 =  tf.slice(pred,[0,0,5 * index],[-1,-1,-1])
 #print tmp1.get_shape()
 #tmp2 = tf.slice(y,[0,5],[-1,-1])
-#print tmp2.get_shape()
-#tmp = tf.pow(tf.reduce_sum(tf.slice(y,[0,b],[-1,-1])),2)
+#print tmp2.get_shape(
+print 'is_appear : ', is_appear.dtype
+print 'pred : ',pred.get_shape()
+print 'tmp 1 : ',tf.slice(pred,[0,0,5 * index],[-1,-1,-1]).get_shape()
+tmp = tf.mul(is_appear, tf.pow(tf.reduce_sum(tf.sub(tf.slice(y,[0,4],[-1,-1]), tf.slice(pred,[0,0,5 * index],[-1,-1,-1]))),2))
+print 'tmp shape ', tmp.get_shape()
+print loss.dtype
+
+loss = tf.reshape(loss,[int(loss.get_shape()[0]),int(loss.get_shape()[1])])
+print 'loss shape ', loss.get_shape()
 loss = tf.add(loss, tf.mul(is_appear, tf.pow(tf.reduce_sum(tf.sub(tf.slice(y,[0,4],[-1,-1]), tf.slice(pred,[0,0,5 * index],[-1,-1,-1]))),2)))
-
-assert len(y[:,:,b:]) == num_classes
-
+print int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) 
+print tf.slice(y,[0,4],[-1,-1]).get_shape()
+assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
 loss = tf.reduce_mean(loss)
 
+optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+#print 'image : ', len(images)
+print 'images : ', images.dtype
 
+#print images.get_shape()
+
+init = tf.initialize_all_variables()
 with tf.Session() as sess:
     
+
     sess.run(init)
-    step = 1
-
+    step = 0
+    
+    print 'realy start training ... '
     while step * batch_size < training_iters:
+        #print 'image : ', len(images)
+        #print 'images : ', images.dtype
+        #print len(objects)
+        #print images.get_shape()
+        #print 'objects:',objects.shape
+        #batch_x = tf.slice(images,[step * batch_size,0],[(step+1) * batch_size,-1])
+        batch_x = images[step * batch_size : (step+1) * batch_size]
+        batch_y = objects[step * batch_size : (step+1) * batch_size]
+        print 'batch_y:',batch_y.shape
 
-        batch_x = images[i * batch_size : (i+1) * batch_size]
-        batch_y = objects[i * batch_size : (i+1) * batch_size]
+        print 'batch_y : ', type(batch_y)
+        print 'batch_x : ', type(batch_x)
+
         
-        sess.run(optimizer, 
-                feed_dict = {
-                      x:batch_x,
-                      y:batch_y})
+        #print 'batch x : ', batch_x.get_shape()
+        #print 'batch_y : ', batch_y.get_shape()
+        
 
+        sess.run(optimizer, feed_dict = 
+                                {
+                                 x:batch_x,
+                                 y:batch_y
+                                })
+        
+        print 'step {} '.format(step)
         if step % display_step == 0:
             
             loss, acc = sess([cost, accuracy], 

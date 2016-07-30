@@ -13,8 +13,9 @@ from PIL import Image
 from os.path import join as Path
 from gevent.pool import Pool
 from skimage import io
+from skimage.transform import resize
 from xml.dom import minidom
-
+from PIL import Image
 """
 skimage use RGB to
 https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
@@ -109,8 +110,8 @@ def get_index_by_name(cls, cls_name):
     gt = np.zeros(cls_num)
     
     gt[index] = 1
-    print gt
-    print gt.shape
+    #print gt
+    #print gt.shape
     return gt 
 
 
@@ -213,13 +214,23 @@ def load_imdb(database, cls_name):
 
             image = image.reshape((height, width, channels))
             
+            image = resize(image, (448,448))            
             
+            width = 448
+
+            height = 448
+
+            #io.imshow(image)
+            #io.show()
             for idx in xrange(datum.object_num):
 
                 x = datum.object[idx].x
                 y = datum.object[idx].y
-                w = datum.object[idx].width
-                h = datum.object[idx].height
+
+
+                w = float(datum.object[idx].width) / width
+                h = float(datum.object[idx].height) / height
+
                 cls = datum.object[idx].cls
                 gt_cls = get_index_by_name(cls, cls_name)
 
@@ -227,18 +238,19 @@ def load_imdb(database, cls_name):
                     objects = np.hstack((np.array([x,y,w,h]),gt_cls))
                 else:    
                     objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
-
-                images.append(image)
+                
+                #objects.append([x,y,w,h,gt_cls])
+                images.append(image.flatten())
                 #print len(objects)
                 #print len(images)
-
+                
             num += 1
 
     #print len(objects)
     #print len(images)
 
     assert len(objects) == len(images)
-
+    
     print 'consume : ', time.time() - start
     return images, objects 
 
