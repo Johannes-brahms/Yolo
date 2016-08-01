@@ -16,6 +16,7 @@ from skimage import io
 from skimage.transform import resize
 from xml.dom import minidom
 from PIL import Image
+import gc
 """
 skimage use RGB to
 https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
@@ -39,34 +40,6 @@ def get_data_from_list(train_list):
         print 'image :', image
 
     return image_queue
-
-def generate_cache(train_list, filename):
-
-    database = lmdb.open(filename, map_size = int(1e12))
-
-    num_imges = 0
-
-    with image_in_db.begin(write = True) as txn:
-
-            for idx, img in enumerate(inputs):
-
-                image = io.imread(img, False)
-
-                assert image.dtype == np.uint8
-
-                data = yolo_pb2.Image()
-                data.data = image.tobytes()
-                data.height, data.width, data.channels = image.shape
-                data.name = img
-
-                for obj in load_annotation_from_xml(img):
-
-                    data.add
-
-                txn.put(str(num_imges), datum.SerializeToString())
-
-                #image = image[:,:,::-1]
-                #image = image.transpose((2, 0, 1))
 
 def merge_roidbs(filename, datum):
 
@@ -104,15 +77,15 @@ def merge_roidbs(filename, datum):
     datum.object_num = len(objects)
     return datum
 def get_index_by_name(cls, cls_name):
-    
+
     cls_num = len(cls_name)
     index = cls_name.index(cls)
     gt = np.zeros(cls_num)
-    
+
     gt[index] = 1
     #print gt
     #print gt.shape
-    return gt 
+    return gt
 
 
 def generate_caches(database, lists):
@@ -144,7 +117,7 @@ def generate_caches(database, lists):
 
                 datum = merge_roidbs(image_name, datum)
                 txn.put(str(num), datum.SerializeToString())
-
+                print 'Images {}'.format(num)
             num += 1
 
 
@@ -194,7 +167,7 @@ def load_imdb(database, cls_name):
         while True:
 
             raw = txn.get(str(num))
-            
+
             if raw is None:
                 break
 
@@ -206,63 +179,62 @@ def load_imdb(database, cls_name):
 
             image = io.imread(image)
 
-            width = datum.width
+            original_width = datum.width
 
-            height = datum.height
+            original_height = datum.height
 
             channels = datum.channels
 
-            image = image.reshape((height, width, channels))
-            
-            image = resize(image, (448,448))            
-            
+            image = image.reshape((original_height, original_width, channels))
+
+            image = resize(image, (448,448))
+
             width = 448
 
+            w_ratio = float(original_width) / width
+
             height = 448
+
+            h_ratio = float(original_height) / height
 
             #io.imshow(image)
             #io.show()
             for idx in xrange(datum.object_num):
 
-                x = datum.object[idx].x
-                y = datum.object[idx].y
-
-
-                w = float(datum.object[idx].width) / width
-                h = float(datum.object[idx].height) / height
+                x = float(datum.object[idx].x) / w_ratio / width
+                y = float(datum.object[idx].y) / h_ratio / height
+                w = float(datum.object[idx].width) / w_ratio / width
+                h = float(datum.object[idx].height) / h_ratio / height
 
                 cls = datum.object[idx].cls
                 gt_cls = get_index_by_name(cls, cls_name)
 
                 if objects == None:
                     objects = np.hstack((np.array([x,y,w,h]),gt_cls))
-                else:    
+                else:
                     objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
-                
+
                 #objects.append([x,y,w,h,gt_cls])
-                images.append(image.flatten())
-                #print len(objects)
-                #print len(images)
-                
+                images.append(image)
+
+
+                print 'load Images : {}'.format(num)
+
+            if num % 1000 == 0:
+                gc.collect()
+
             num += 1
 
     #print len(objects)
     #print len(images)
 
     assert len(objects) == len(images)
-    
+
     print 'consume : ', time.time() - start
-    return images, objects 
+    return images, objects
 
 
 
 #load_annotation_from_xml('Annotations/xmls/multi/m_1.xml')
-generate_caches('plate', 'train.txt')
-#load_imdb('testdb')
-
-"""
-threads = []
-start = time.time()
-image = get_data_from_list('train.txt')
-print 'time cost : ', time.time() - start
-"""
+#generate_caches('plate', 'train.txt')
+load_imdb('plate',['plate'])
