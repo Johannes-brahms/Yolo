@@ -18,7 +18,7 @@ batch_size = 5
 n_input = 448 * 448
 B = 2
 S = 7
-cls_name = ['plate','dog']
+cls_name = ['plate','dog','mouse']
 n_class = len(cls_name)
 
 learning_rate = 0.01
@@ -317,8 +317,6 @@ def is_responsible(confidence):
 
     return is_res
 
-
-
 def is_appear_in_cell(confidence):
 
     return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size,49)))
@@ -353,33 +351,15 @@ is_appear = tf.cast(is_appear, tf.float32)
 
 images, objects = load_imdb('plate', cls_name)
 
-images =np.array(images)
+images = np.array(images)
+
 loss = None
 B = 2
-#b = tf.Variable(0)
+
 for b in xrange(B):
-#tf.while_loop(b < B, ):
 
-    """
-    B = [(SxS) x B]
-
-    x, y => relative to cell
-    w, h => relative to image
-
-    pred = [batch, SxS, 5B+C]
-
-
-    dx = (pred[:,:,b*5+0] - y[:,0]) ** 2
-    dy = (pred[:,:,b*5+1] - y[:,1]) ** 2
-    dw = (pred[:,:,b*5+2]**0.5 - y[:,2]**0.5) ** 2
-    dh = (pred[:,:,b*5+3]**0.5 - y[:,3]**0.5) ** 2
-    dc = (pred[:,:,b*5+4] - y[:,4]) ** 2
-    """
 
     pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
-
-    print 'slice x : ', tf.slice(y, [0,0], [-1,1]).get_shape()
-#    print 'slice x 2 : ', , [-1, S*S, b+1]).
     gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [batch_size, 1, 1])
 
     pred_y = tf.slice(pred, [0,0,b * 5 + 1], [-1,-1,1])
@@ -395,60 +375,22 @@ for b in xrange(B):
     pred_c = tf.slice(pred, [0,0,b * 5 + 4], [-1,-1,1])
 
 #    gt_c = tf.ones([-1,S*S,b+1])
-    print 'gt_x : ', gt_x.get_shape()
-    print 'pred_x : ', pred_x.get_shape()
+    #print 'gt_x : ', gt_x.get_shape()
+    #print 'pred_x : ', pred_x.get_shape()
 
     dx = tf.pow(tf.sub(pred_x, gt_x), 2)
     dy = tf.pow(tf.sub(pred_y, gt_y), 2)
-
     dw = tf.pow(tf.sub(tf.pow(pred_w,0.5), tf.pow(gt_w,0.5)), 2)
     dh = tf.pow(tf.sub(tf.pow(pred_h,0.5), tf.pow(gt_h,0.5)), 2)
-
     dc = tf.pow(tf.sub(pred_c, 1), 2)
 
-
-
-    """
-
-    print 'dx predict : ', tf.slice(pred,[0,0,b*5+0],[-1,-1,1]).get_shape()
-    print 'dx y :', tf.slice(y,[0,0],[-1,1]).get_shape()
-    dx = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+0],[-1,-1,1]),tf.slice(y,[0,0],[-1,1])),2)
-    dy = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+1],[-1,-1,1]),tf.slice(y,[0,1],[-1,1])),2)
-    dw = tf.pow(tf.sub(tf.pow(tf.slice(pred,[0,0,b*5+2],[-1,-1,1]),0.5),tf.pow(tf.slice(y,[0,2],[-1,1]),0.5)),2)
-    dh = tf.pow(tf.sub(tf.pow(tf.slice(pred,[0,0,b*5+3],[-1,-1,1]),0.5),tf.pow(tf.slice(y,[0,3],[-1,1]),0.5)),2)
-
-    dc = tf.pow(tf.sub(tf.slice(pred,[0,0,b*5+4],[-1,-1,1]),1),2) #tf.slice(y,[0,4],[-1,1])),2)
-    """
-    """
-
     if loss == None:
-
-        loss = lcoord * is_res[:,:,b] * (dx+dy) + \
-                lcoord * is_res[:,:,b] * (dw+dh) + \
-                is_res[:,:,b] * dc + \
-                lnoobj * not_res[:,:,b] * dc
-    else:
-
-        loss += lcoord * is_res[:,:,b] * (dx+dy) + \
-                lcoord * is_res[:,:,b] * (dw+dh) + \
-                is_res[:,:,b] * dc + \
-                lnoobj * not_res[:,:,b] * dc
-
-    index = b + 1
-    """
-
-    if loss == None:
-
-        #print tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1]),tf.int32).dtype
-        #print tf.add(dx,dy).dtype
-        #print lcoord.dtype
-        #test1 = tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1]),tf.float32)
-        #test = tf.mul(lcoord, tf.cast(tf.slice(is_res,[0,0,b],[-1,-1,1])))
 
         loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
         loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
         loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
         loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
+        print 'is None loss : ', loss_coord_wh.get_shape()
 
         loss = tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj))
 
@@ -458,57 +400,52 @@ for b in xrange(B):
         loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
         loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
         loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
-
+        print 'is loss : ' ,loss_coord_wh.get_shape()
         loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
-
+        print 'is loss is loss : ' ,loss.get_shape()
     index = b + 1
 
-    """
-loss += is_appear * sum((y[:,:,b:] - pred[:,:,b:]) ** 2)
-"""
-#print index
-#tmp1 =  tf.slice(pred,[0,0,5 * index],[-1,-1,-1])
-#print tmp1.get_shape()
-#tmp2 = tf.slice(y,[0,5],[-1,-1])
-#print tmp2.get_shape(
-#print 'is_appear : ', is_appear.dtype
-#print 'pred : ',pred.get_shape()
-#print 'tmp 1 : ',tf.slice(pred,[0,0,5 * index],[-1,-1,-1]).get_shape()
-#tmp = tf.mul(is_appear, tf.pow(tf.reduce_sum(tf.sub(tf.slice(y,[0,4],[-1,-1]), tf.slice(pred,[0,0,5 * index],[-1,-1,-1]))),2))
-#print 'tmp shape ', tmp.get_shape()
-#print loss.dtype
+
+
 print 'loss shape : ', loss.get_shape()
+loss = tf.reshape(tf.reduce_sum(loss,1), [-1])
+print 'loss shape : ', loss.get_shape()
+
 
 """
 reshape loss [batch, cell, bbox] to [batch, bbox], so we can sum over all bbox
 
 """
 
-gt_cls = tf.pow(tf.sub(tf.slice(y, [0,4], [-1,-1]), tf.slice(pred, [0,0,5 * index], [-1,-1,-1])),2)
+print 't1 : ', tf.slice(y, [0,4], [-1,-1]).get_shape()
+print 't2 : ', tf.slice(pred, [0,0,5 * index], [-1,-1,-1]).get_shape()
+
+y_cls = tf.reshape(tf.slice(pred, [0,0,5 * index], [-1,-1,-1]),[-1,S*S,n_class])
+
+pred_cls = tf.slice(pred, [0,0,5 * index], [-1,-1,-1])
+
+
+print 'y_Cls : ', y_cls.get_shape()
+print 'pred_cls : ', pred_cls.get_shape()
+gt_cls = tf.pow(tf.sub(y_cls, pred_cls),2)
 
 print 'gt_cls 1 :', gt_cls.get_shape()
 
-is_appear = tf.reshape(is_appear, [-1, S*S, 1])
+is_appear = tf.reshape(is_appear, [-1, S * S, 1])
 gt_cls = tf.mul(is_appear, gt_cls)
-
+gt_cls = tf.reduce_sum(gt_cls,1)
 print 'gt_cls 2 :', gt_cls.get_shape()
+gt_cls = tf.reduce_sum(gt_cls,1)
+print 'gt_cls 3 :', gt_cls.get_shape()
+print 'loss 3 : ', loss.get_shape()
+loss = tf.add(loss, gt_cls)
+print 'gt_cls 4 :', gt_cls.get_shape()
 print 'y : ', tf.slice(y,[0,4],[-1,-1]).get_shape()
-#loss = tf.add(loss,tf.reduce_sum(tf.mul(is_appear, tf.pow(tf.sub(tf.slice(y,[0,4],[-1,-1]), tf.slice(pred,[0,0,5 * index],[-1,-1,-1])),2))))
-print ' b : ', b
-#loss = tf.reshape(loss,[int(loss.get_shape()[0]),int(loss.get_shape()[1] * (index))])
-#print 'loss shape ', loss.get_shape()
-#loss = tf.add(loss, tf.mul(is_appear, tf.pow(tf.reduce_sum(tf.sub(tf.slice(y,[0,4],[-1,-1]), tf.slice(pred,[0,0,5 * index],[-1,-1,-1]))),2)))
-#print int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1])
-#print tf.slice(y,[0,4],[-1,-1]).get_shape()
+
 assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
 loss = tf.reduce_mean(loss)
+print 'reduce loss :' ,loss.get_shape()
 optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-#accuracy =
-#optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
-#print 'image : ', len(images)
-#print 'images : ', images.dtype
-
-#print images.get_shape()
 
 
 
@@ -541,8 +478,8 @@ with tf.Session() as sess:
         start = step * batch_size % len(images)
         end = (step + 1) * batch_size % len(images) # from zero
         if end < start:
-            batch_x = images[start : ] + images[:end]
-            batch_y = objects[start : ] + objects[:end]
+            batch_x = np.vstack((images[start : ],images[:end]))
+            batch_y = np.vstack((objects[start : ],objects[:end]))
         else:
             batch_x = images[start : end]
             batch_y = objects[start : end]
