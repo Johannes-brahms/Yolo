@@ -199,7 +199,7 @@ biases = {
 }
 
 
-x = tf.placeholder(tf.float32, [5, n_input * 3]) # feed_dict (unknown batch , features)
+x = tf.placeholder(tf.float32, [None, n_input * 3]) # feed_dict (unknown batch , features)
 y = tf.placeholder(tf.float32, [None, n_class + 4]) # feed_dict (unknown batch, prob for each classes)
 
 
@@ -339,7 +339,7 @@ lcoord = tf.constant(5, dtype = tf.float32)
 lnoobj = tf.constant(0.5, dtype = tf.float32)
 
 pred = conv_net(x, weights, biases, 1)
-display_step = 20
+display_step = 1
 
 print 'prediction first : ' , pred.get_shape()
 confidence = get_confidence(pred, y, B)
@@ -503,11 +503,19 @@ print ' b : ', b
 assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
 loss = tf.reduce_mean(loss)
 optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+#accuracy =
 #optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
 #print 'image : ', len(images)
 #print 'images : ', images.dtype
 
 #print images.get_shape()
+
+
+
+
+
+
+
 
 init = tf.initialize_all_variables()
 with tf.Session() as sess:
@@ -524,8 +532,29 @@ with tf.Session() as sess:
         #print images.get_shape()
         #print 'objects:',objects.shape
         #batch_x = tf.slice(images,[step * batch_size,0],[(step+1) * batch_size,-1])
-        batch_x = images[step * batch_size : (step+1) * batch_size]
-        batch_y = objects[step * batch_size : (step+1) * batch_size]
+        batch_x = []
+        batch_y = []
+
+
+
+
+        start = step * batch_size % len(images)
+        end = (step + 1) * batch_size % len(images) # from zero
+        if end < start:
+            batch_x = images[start : ] + images[:end]
+            batch_y = objects[start : ] + objects[:end]
+        else:
+            batch_x = images[start : end]
+            batch_y = objects[start : end]
+
+                #batch_y = objects[step * batch_size : (step+1) * batch_size]
+
+        #batch_x = images[step * batch_size : (step+1) * batch_ize]
+        #batch_y = objects[step * batch_size : (step+1) * batch_size]
+
+
+
+
         print 'batch_y:',batch_y.shape
         print 'batch_x:',batch_x.shape
         #print 'batch_y : ', type(batch_y)
@@ -545,12 +574,13 @@ with tf.Session() as sess:
         print 'step {} '.format(step)
         if step % display_step == 0:
 
-            loss, acc = sess([cost, accuracy],
+            cost = sess.run([loss],
                             feed_dict = {
                                 x:batch_x,
                                 y:batch_y})
 
-            print "Iter " , str(step*batch_size) + ", Minibatch Loss= " ,"{:.6f}".format(loss) , ", Training Accuracy= " ,"{:.5f}".format(acc)
-            step += 1
+            print "Iter " , str(step*batch_size) + ", Minibatch Loss = " , cost
+            #, Training Accuracy= " ,"{:.5f}".format(acc)
+        step += 1
 
     print "Optimization Finished!"
