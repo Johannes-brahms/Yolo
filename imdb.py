@@ -13,39 +13,26 @@ from PIL import Image
 from os.path import join as Path
 from gevent.pool import Pool
 from skimage import io
-from skimage.transform import resize
 from xml.dom import minidom
 from PIL import Image
 import gc
+
+import cv2
+from gevent import monkey
+
 """
 skimage use RGB to
 https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 """
 
-
-def get_data_from_list(train_list):
-
-    train_list = open(train_list, 'r')
-
-    image_queue = []
-
-    for image in train_list:
-
-        image = image.strip('\n')
-        print 'image :', image
-        g.spawn(image_queue.append(io.imread(os.path.join('Images',image + '.jpg'), True)))
-        g.join()
-
-        print 'image :', image
-
-    return image_queue
-
-def merge_roidbs(filename, datum):
+def merge_roidbs(filename, datum, ratio):
 
     path = Path('Annotations', 'xmls', filename + '.xml')
 
     xml = ET.parse(path)
+
+    w_ratio, h_ratio = ratio
 
     objects = xml.findall('object')
 
@@ -55,10 +42,10 @@ def merge_roidbs(filename, datum):
 
         # Make pixel indexes 0-based
 
-        xmin = float(bbox.find('xmin').text) # - 1
-        ymin = float(bbox.find('ymin').text) # - 1
-        xmax = float(bbox.find('xmax').text) # - 1
-        ymax = float(bbox.find('ymax').text) # - 1
+        xmin = float(bbox.find('xmin').text) / w_ratio / datum.width# - 1
+        ymin = float(bbox.find('ymin').text) / h_ratio / datum.height# - 1
+        xmax = float(bbox.find('xmax').text) / w_ratio / datum.width# - 1
+        ymax = float(bbox.find('ymax').text) / h_ratio / datum.height# - 1
 
         cls = obj.find('name').text
 
@@ -72,54 +59,140 @@ def merge_roidbs(filename, datum):
         o.width = int(xmax - xmin)
         o.height = int(ymax - ymin)
         o.cls = cls
+
     assert len(objects) > 0
 
     datum.object_num = len(objects)
     return datum
 def get_index_by_name(cls, cls_name):
-
     cls_num = len(cls_name)
     index = cls_name.index(cls)
     gt = np.zeros(cls_num)
-
     gt[index] = 1
-    #print gt
-    #print gt.shape
     return gt
+def generate_caches_with_raw(database, lists):
 
+    with lmdb.open(database, map_size = int(1e10)) as env :
 
-def generate_caches(database, lists):
-
-    env = lmdb.open(database, map_size = int(1e12))
-
-    image_list = open(lists, 'r')
-
-    with env.begin(write = True) as txn:
-
+        image_list = open(lists, 'r')
+        start = time.time()
         num = 0
 
         for image_name in image_list:
 
-            image_name = image_name.strip('\n')
+            with env.begin(write = True) as txn :
 
-            with open(Path('Images', image_name + '.jpg'), 'r') as image:
-
-                data = base64.b64encode(image.read())
-
+                image_name = image_name.strip('\n')
                 image = io.imread(Path('Images', image_name + '.jpg'), False)
+                w_ratio = float(image.shape[1]) / 448
+                h_ratio = float(image.shape[0]) / 448
+                image = cv2.resize(image, (448, 448))
 
-                datum = yolo_pb2.Image()
-
-                datum.data = data
+                # parse to datum format
+                datum = yolo_pb2.Image_raw()
+                datum.data = image.tobytes()
                 datum.channels = image.shape[2]
                 datum.height = image.shape[0]
                 datum.width = image.shape[1]
 
-                datum = merge_roidbs(image_name, datum)
-                txn.put(str(num), datum.SerializeToString())
-                print 'Images {}'.format(num)
-            num += 1
+                datum = merge_roidbs(image_name, datum, [w_ratio, h_ratio])
 
+                # write to database
+                txn.put(str(num), datum.SerializeToString())
+
+                num += 1
+
+                print 'load images : {}'.format(num)
+
+    print 'time : ', time.time() - start
+
+
+def load_imdb_from_raw(database, cls_name):
+
+    start = time.time()
+    env = lmdb.open(database, readonly = True)
+    print '\n\n[*] loading database .... '
+    objects = None
+    images = []
+    num = 0
+    with env.begin() as txn:
+        while True:
+            raw = txn.get(str(num))
+            if type(raw) is not str:
+                break
+            datum = yolo_pb2.Image_raw()
+            datum.ParseFromString(raw)
+
+            image = np.fromstring(datum.data, dtype=np.uint8)
+            image = image.reshape((datum.height,  datum.width,  datum.channels))
+            for idx in xrange(datum.object_num):
+
+                x = datum.object[idx].x         #/ w_ratio / width
+                y = datum.object[idx].y         #/ h_ratio / height
+                w = datum.object[idx].width     #/ w_ratio / width
+                h = datum.object[idx].height    #/ h_ratio / height
+
+                cls = datum.object[idx].cls
+
+                gt_cls = get_index_by_name(cls, cls_name)
+
+                if type(objects) != np.ndarray:
+                    objects = np.hstack((np.array([x,y,w,h]),gt_cls))
+                    #images = np.reshape(image,(1,448,448,3))
+                    #images = image.flatten()
+                else:
+                    objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
+                    #images = np.vstack((images,np.reshape(image,(1,448,448,3))))
+                    #images = np.hstack(image.flatten())
+                    #print images.shape
+
+                images.append(image.flatten())
+                #print 'load Images : {}'.format(num)
+
+            num += 1
+            #print 'load Images : {}'.format(num)
+
+    assert len(objects) == len(images)
+    print '[*] image loading is done ...'
+    print '[*] consume :', time.time() - start
+    return images, objects
+
+
+def generate_caches_with_jpg(database, lists):
+
+    with lmdb.open(database, map_size = int(1e12)) as env :
+
+        image_list = open(lists, 'r')
+
+        with env.begin(write = True) as txn:
+
+            num = 0
+
+            for image_name in image_list:
+
+                image_name = image_name.strip('\n')
+
+                with open(Path('Images', image_name + '.jpg'), 'r') as image:
+
+                    data = base64.b64encode(image.read())
+
+                    image = io.imread(Path('Images', image_name + '.jpg'), False)
+
+                    w_ratio = float(image.shape[1]) / 448
+                    h_ratio = float(image.shape[0]) / 448
+
+                    image = cv2.resize(image,(448,448))
+                    datum = yolo_pb2.Image_jpg()
+                    datum.data = data
+                    datum.channels = image.shape[2]
+                    datum.height = image.shape[0]
+                    datum.width = image.shape[1]
+
+                    datum = merge_roidbs(image_name, datum, [w_ratio, h_ratio])
+                    txn.put(str(num), datum.SerializeToString())
+                    print 'Images {}'.format(num)
+
+                num += 1
 
 def test_proto():
     import yolo_pb2
@@ -152,89 +225,109 @@ def test_proto():
         Object.cls = 'cat'
         txn.put('test', datum.SerializeToString())
 
-
-def load_imdb(database, cls_name):
+def load_imdb_from_jpg(database, cls_name, start, end):
     start = time.time()
-    env = lmdb.open(database, readonly = True)
-    print 'loading database .... '
-    objects = None
-    images = []
 
-    with env.begin() as txn:
+    with lmdb.open(database, readonly = True) as env:
+        print 'loading database .... '
+        objects = None
+        images = []
 
-        num = 0
+        with env.begin() as txn:
+            num = 0
+            while True:
+                raw = txn.get(str(num))
+                if raw is None:
+                    break
+                datum = yolo_pb2.Image_jpg()
+                datum.ParseFromString(raw)
+                image = StringIO(base64.b64decode(datum.data))
+                image = io.imread(image)
 
-        while True:
+                original_width = datum.width
+                original_height = datum.height
+                channels = datum.channels
 
-            raw = txn.get(str(num))
+                image = image.reshape((original_height, original_width, channels))
+                image = cv2.resize(image, (448,448))
 
-            if raw is None:
-                break
+                width = 448
+                height = 448
+                w_ratio = float(original_width) / width
+                h_ratio = float(original_height) / height
 
-            datum = yolo_pb2.Image()
+                #io.imshow(image)
+                #io.show()
+                for idx in xrange(datum.object_num):
 
-            datum.ParseFromString(raw)
+                    x = float(datum.object[idx].x) / w_ratio / width
+                    y = float(datum.object[idx].y) / h_ratio / height
+                    w = float(datum.object[idx].width) / w_ratio / width
+                    h = float(datum.object[idx].height) / h_ratio / height
 
-            image = StringIO(base64.b64decode(datum.data))
+                    cls = datum.object[idx].cls
+                    gt_cls = get_index_by_name(cls, cls_name)
 
-            image = io.imread(image)
+                    if objects == None:
+                        objects = np.hstack((np.array([x,y,w,h]),gt_cls))
+                        #images = np.reshape(image,(1,448,448,3))
+                        #images = image.flatten()
+                    else:
+                        objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
+                        #images = np.vstack((images,np.reshape(image,(1,448,448,3))))
+                        #images = np.hstack(image.flatten())
+                        #print images.shape
 
-            original_width = datum.width
-
-            original_height = datum.height
-
-            channels = datum.channels
-
-            image = image.reshape((original_height, original_width, channels))
-
-            image = resize(image, (448,448))
-
-            width = 448
-
-            w_ratio = float(original_width) / width
-
-            height = 448
-
-            h_ratio = float(original_height) / height
-
-            #io.imshow(image)
-            #io.show()
-            for idx in xrange(datum.object_num):
-
-                x = float(datum.object[idx].x) / w_ratio / width
-                y = float(datum.object[idx].y) / h_ratio / height
-                w = float(datum.object[idx].width) / w_ratio / width
-                h = float(datum.object[idx].height) / h_ratio / height
-
-                cls = datum.object[idx].cls
-                gt_cls = get_index_by_name(cls, cls_name)
-
-                if objects == None:
-                    objects = np.hstack((np.array([x,y,w,h]),gt_cls))
-                else:
-                    objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
-
-                #objects.append([x,y,w,h,gt_cls])
-                images.append(image)
+                    images.append(image)
 
 
-                print 'load Images : {}'.format(num)
 
-            if num % 1000 == 0:
-                gc.collect()
+                    print 'load Images : {}'.format(num)
 
-            num += 1
-
-    #print len(objects)
-    #print len(images)
-
-    assert len(objects) == len(images)
-
-    print 'consume : ', time.time() - start
+                #if num == 100:
+                    #break
+                if num % 1000 == 0:
+                    gc.collect()
+                num += 1
+        assert len(objects) == len(images)
+        print 'consume : ', time.time() - start
     return images, objects
 
 
+def parallel(database, cores, cls_name):
+    env = lmdb.open(database, readonly = True)
+    with env.begin() as txn:
+        length = txn.stat()['entries']
+        print 'length : ', length
 
+        batch = length / cores
+
+        threads = []
+        start = time.time()
+        for core in xrange(cores):
+
+            begin = batch * core
+
+            if core == cores:
+                end = length - 1
+            else:
+                end = batch * (core + 1)
+
+            threads.append(gevent.spawn(load_imdb_from_raw, database, cls_name, begin, end))
+            #thread.start_new_thread( load_imdb_from_raw, (database, cls_name, begin, end) )
+
+        start = time.time()
+        gevent.joinall(threads)
+        print 'consume : ', time.time() - start
+
+
+
+def parallel_generate_cache():
+    pass
+#generate_caches('test','train.txt')
 #load_annotation_from_xml('Annotations/xmls/multi/m_1.xml')
-#generate_caches('plate', 'train.txt')
-load_imdb('plate',['plate'])
+#generate_caches_with_raw('5000_raw', '5000.txt')
+#load_imdb_from_jpg('plate',['plate'])
+#load_imdb_from_raw('5000_raw',['plate'])
+#parallel('ttt',8, ['plate'])
+#thread.wait()

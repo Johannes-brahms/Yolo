@@ -1,9 +1,10 @@
 from utils import IoU
 from skimage import io
 import tensorflow as tf
-from imdb import load_imdb
+from imdbs import load_imdb_from_raw
 import numpy as np
-
+from gevent import monkey
+#monkey.patch_all()
 
 batch_size = 5
 n_input = 448 * 448
@@ -274,7 +275,7 @@ is_res = tf.cast(is_res, tf.float32)
 not_res = tf.cast(is_res, tf.float32)
 is_appear = tf.cast(is_appear, tf.float32)
 
-images, objects = load_imdb('plate', cls_name)
+images, objects = load_imdb_from_raw('5000_raw', ['plate'])
 
 images = np.array(images)
 
@@ -380,11 +381,9 @@ with tf.Session() as sess:
         print 'batch_x:',batch_x.shape
 
 
-        sess.run(optimizer, feed_dict =
-                                {
-                                 x:batch_x,
-                                 y:batch_y
-                                })
+        sess.run(optimizer, feed_dict = {
+                                    x:batch_x,
+                                    y:batch_y})
 
         print 'step {} '.format(step)
         if step % display_step == 0:
