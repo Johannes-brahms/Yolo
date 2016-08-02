@@ -13,7 +13,7 @@ S = 7
 cls_name = ['plate','dog','mouse']
 n_class = len(cls_name)
 
-learning_rate = 0.01
+learning_rate = 0.1
 training_iters = 1000
 
 def conv2d(x, W, b, strides = 1):
@@ -275,7 +275,7 @@ is_res = tf.cast(is_res, tf.float32)
 not_res = tf.cast(is_res, tf.float32)
 is_appear = tf.cast(is_appear, tf.float32)
 
-images, objects = load_imdb_from_raw('5000_raw', ['plate'])
+images, objects = load_imdb_from_raw('5000_raw', cls_name)
 
 images = np.array(images)
 
@@ -283,6 +283,8 @@ loss = None
 B = 2
 
 for b in xrange(B):
+
+    print 'prediction : ', pred.get_shape()
 
     pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
     gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
@@ -342,6 +344,8 @@ pred_cls = tf.slice(pred, [0,0,5 * index], [-1,-1,-1])
 
 gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
 
+print 'gt_cls : ', gt_cls.get_shape()
+
 is_appear = tf.reshape(is_appear, [-1, S * S, 1])
 gt_cls = tf.mul(is_appear, gt_cls)
 gt_cls = tf.reduce_sum(gt_cls,1)
@@ -354,9 +358,8 @@ loss = tf.reduce_mean(loss)
 optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 init = tf.initialize_all_variables()
+
 with tf.Session() as sess:
-
-
     sess.run(init)
     step = 0
 
