@@ -6,7 +6,7 @@ import numpy as np
 from gevent import monkey
 #monkey.patch_all()
 
-batch_size = 5
+batch_size = 64
 n_input = 448 * 448
 B = 2
 S = 7
@@ -210,15 +210,20 @@ not_obj = None
 response_threshold = 0.5
 
 def get_confidence(pred, y, B):
+    
+    confidence = []
+    
+    for b in xrange(B):
+        
 
-    shape = (5,int(pred.get_shape()[1]),B)
-    b = 0
+        shape = (-1, int(pred.get_shape()[1]), b+1)    
 
-    confidence = IoU(tf.slice(pred,[0,0,b*5],[-1,-1,4]), y[:,:4])
-    b += 1
+        if type(confidence) is not tf.python.framework.ops.Tensor:
 
-    confidence = tf.concat(1,(confidence,IoU(tf.slice(pred,[0,0,b * 5],[-1,-1,4]), y[ : ,:4])))
-    confidence = tf.reshape(confidence,shape)
+            confidence = IoU(tf.slice(pred,[0,0,b*5],[-1,-1,4]), y[:,:4])
+        else:
+            confidence = tf.concat(1,(confidence,IoU(tf.slice(pred,[0,0,b * 5],[-1,-1,4]), y[ : ,:4])))
+            confidence = tf.reshape(confidence,shape)
 
     assert confidence.dtype == tf.float32
     return confidence
@@ -233,23 +238,22 @@ def is_responsible(confidence):
     """
 
     _, cells, B = list(confidence.get_shape())
+
     max_iou = tf.reduce_max(confidence, 2)
+    
     for b in xrange(B-1):
         max_iou = tf.concat(1,[max_iou,max_iou])
-    max_iou = tf.reshape(max_iou,[batch_size, int(cells), int(B)])
+    
+    max_iou = tf.reshape(max_iou,[-1, int(cells), int(B)])
     is_res = tf.greater_equal(confidence, max_iou)
 
-    assert is_res.dtype == bool
-
-    assert confidence.dtype == tf.float32
-    #assert is_res.get_shape() == confidence.get_shape()
+    assert is_res.dtype == bool and confidence.dtype == tf.float32
 
     return is_res
 
 def is_appear_in_cell(confidence):
 
     return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size,49)))
-    #return tf.reduce_all(confidence,2)
 
 """
 
@@ -267,24 +271,25 @@ display_step = 1
 
 #print 'prediction first : ' , pred.get_shape()
 confidence = get_confidence(pred, y, B)
+
 is_res = is_responsible(confidence)
-is_appear = is_appear_in_cell(confidence)
-not_res = tf.logical_not(is_res)
+
+is_appear = tf.cast(is_appear_in_cell(confidence), tf.float32)
+
+not_res = tf.cast(tf.logical_not(is_res), tf.float32)
 
 is_res = tf.cast(is_res, tf.float32)
-not_res = tf.cast(is_res, tf.float32)
-is_appear = tf.cast(is_appear, tf.float32)
-
 images, objects = load_imdb_from_raw('5000_raw', cls_name)
 
 images = np.array(images)
 
 loss = None
+
 B = 2
 
 for b in xrange(B):
 
-    print 'prediction : ', pred.get_shape()
+    #print 'prediction : ', pred.get_shape()
 
     pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
     gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
@@ -314,7 +319,7 @@ for b in xrange(B):
         loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
         loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
 
-        print 'is None loss : ', loss_coord_wh.get_shape()
+  #      print 'is None loss : ', loss_coord_wh.get_shape()
 
         loss = tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj))
 
@@ -324,9 +329,9 @@ for b in xrange(B):
         loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
         loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
         loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
-        print 'is loss : ' ,loss_coord_wh.get_shape()
+ #       print 'is loss : ' ,loss_coord_wh.get_shape()
         loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
-        print 'is loss is loss : ' ,loss.get_shape()
+#        print 'is loss is loss : ' ,loss.get_shape()
 
     index = b + 1
 
@@ -344,7 +349,7 @@ pred_cls = tf.slice(pred, [0,0,5 * index], [-1,-1,-1])
 
 gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
 
-print 'gt_cls : ', gt_cls.get_shape()
+#print 'gt_cls : ', gt_cls.get_shape()
 
 is_appear = tf.reshape(is_appear, [-1, S * S, 1])
 gt_cls = tf.mul(is_appear, gt_cls)
@@ -358,6 +363,7 @@ loss = tf.reduce_mean(loss)
 optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 init = tf.initialize_all_variables()
+
 
 with tf.Session() as sess:
     sess.run(init)
@@ -379,6 +385,9 @@ with tf.Session() as sess:
         else:
             batch_x = images[start : end]
             batch_y = objects[start : end]
+
+        
+        assert batch_y.shape[-1] == int(y.get_shape()[-1])
 
         print 'batch_y:',batch_y.shape
         print 'batch_x:',batch_x.shape

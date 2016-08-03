@@ -16,7 +16,7 @@ from skimage import io
 from xml.dom import minidom
 from PIL import Image
 import gc
-
+from yolo_utils import cell_locate
 import cv2
 from gevent import monkey
 
@@ -42,10 +42,10 @@ def merge_roidbs(filename, datum, ratio):
 
         # Make pixel indexes 0-based
 
-        xmin = float(bbox.find('xmin').text) / w_ratio / datum.width# - 1
-        ymin = float(bbox.find('ymin').text) / h_ratio / datum.height# - 1
-        xmax = float(bbox.find('xmax').text) / w_ratio / datum.width# - 1
-        ymax = float(bbox.find('ymax').text) / h_ratio / datum.height# - 1
+        xmin = float(bbox.find('xmin').text) / w_ratio #/ datum.width# - 1
+        ymin = float(bbox.find('ymin').text) / h_ratio #/ datum.height# - 1
+        xmax = float(bbox.find('xmax').text) / w_ratio #/ datum.width# - 1
+        ymax = float(bbox.find('ymax').text) / h_ratio #/ datum.height# - 1
 
         cls = obj.find('name').text
 
@@ -125,26 +125,23 @@ def load_imdb_from_raw(database, cls_name):
 
             image = np.fromstring(datum.data, dtype=np.uint8)
             image = image.reshape((datum.height,  datum.width,  datum.channels))
+
             for idx in xrange(datum.object_num):
 
                 x = datum.object[idx].x         #/ w_ratio / width
                 y = datum.object[idx].y         #/ h_ratio / height
                 w = datum.object[idx].width     #/ w_ratio / width
                 h = datum.object[idx].height    #/ h_ratio / height
-
                 cls = datum.object[idx].cls
+                
+                object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
 
                 gt_cls = get_index_by_name(cls, cls_name)
 
                 if type(objects) != np.ndarray:
-                    objects = np.hstack((np.array([x,y,w,h]),gt_cls))
-                    #images = np.reshape(image,(1,448,448,3))
-                    #images = image.flatten()
+                    objects = np.hstack((np.array([x, y, w, h]), gt_cls, object_center))
                 else:
-                    objects = np.vstack((objects, np.hstack((np.array([x,y,w,h]),gt_cls))))
-                    #images = np.vstack((images,np.reshape(image,(1,448,448,3))))
-                    #images = np.hstack(image.flatten())
-                    #print images.shape
+                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls, object_center))))
 
                 images.append(image.flatten())
                 #print 'load Images : {}'.format(num)
@@ -324,6 +321,9 @@ def parallel(database, cores, cls_name):
 
 def parallel_generate_cache():
     pass
+
+
+
 #generate_caches('test','train.txt')
 #load_annotation_from_xml('Annotations/xmls/multi/m_1.xml')
 #generate_caches_with_raw('5000_raw', '5000.txt')
