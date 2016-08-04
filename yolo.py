@@ -3,17 +3,18 @@ from skimage import io
 import tensorflow as tf
 from imdbs import load_imdb_from_raw
 import numpy as np
-from yolo_utils import cell_locate
+from yolo_utils import cell_locate, convert_to_one
 #monkey.patch_all()
 
-batch_size = 64
+batch_size = 5
 n_width = 448
 n_height = 448
 n_input = n_width * n_height
-B = 2
-S = 7
 cls_name = ['plate','dog','mouse']
 n_class = len(cls_name)
+
+B = 2
+S = 7
 
 learning_rate = 0.1
 training_iters = 1000
@@ -211,7 +212,7 @@ not_obj = None
 
 response_threshold = 0.5
 
-def get_confidence(pred, y, B):
+def Confidence(pred, y):
     
     confidence = None
 
@@ -220,7 +221,7 @@ def get_confidence(pred, y, B):
     
     for b in xrange(B):
 
-        shape = (-1, int(pred.get_shape()[1]), b+1)    
+        shape = (-1, int(pred.get_shape()[1]), b + 1)    
 
         if type(confidence) is not tf.python.framework.ops.Tensor:
 
@@ -231,6 +232,7 @@ def get_confidence(pred, y, B):
 
     assert confidence.dtype == tf.float32
 
+    print 'confidence shape ', confidence.get_shape()
 
     return confidence
 
@@ -240,66 +242,101 @@ def convert_to_reality():
 
     pass
 
-def responese(pred, gt):
 
-    res = None
+"""
+
+check which cell is the center of the object located
+
+
+"""
+
+def Center(groundtruth):
+
+    c = None
 
     for b in xrange(B):
 
-        grid_cell_index = tf.cast(tf.reshape(cell_locate((n_width,n_height), gt, 7), [-1]), tf.int32)
+        # grid cell index tensor shape : [ batch , cells , one of bboxes ]
+        # find out which grid cell is the bbox center located in
+
+        grid_cell_index = tf.cast(tf.reshape(cell_locate((n_width,n_height), groundtruth, S), [-1]), tf.int32)
+
+        # generate index for terrible tensorflow slicing tensor
 
         index = tf.range(0, batch_size)
 
+        # pack index with grid cell index 
+
         indices = tf.cast(tf.pack([index, grid_cell_index], axis = 1), tf.int64)
 
-        res_sparse = tf.SparseTensor(indices = indices, values = tf.ones(batch_size), shape = [batch_size , S * S])
+        # set the " center variable " to one ( which is boolean type ), in terms of grid cell index  
 
+        center_sparse = tf.SparseTensor(indices = indices, values = tf.ones(batch_size), shape = [batch_size , S * S])
 
-        if type(res) is not tf.python.framework.ops.Tensor:
+        # convert sparse tensor to dense tensor, and set others to 0 , represent that they are no responsible to the object
 
-            res = tf.sparse_tensor_to_dense(res_sparse)
+        if type(c) is not tf.python.framework.ops.Tensor:
+
+            c = tf.sparse_tensor_to_dense(center_sparse)
         
         else:
 
-            res = tf.concat(1,[res, tf.sparse_tensor_to_dense(res_sparse)])
+            c = tf.concat(1,[c, tf.sparse_tensor_to_dense(center_sparse)])
 
 
-    res = tf.reshape(res,[-1, S * S, B])
+    c = tf.reshape(c,[-1, S * S, B])
         
+    return c
 
-    print 'indices : ', indices.get_shape()
+
+"""
+
+chose the best predictor
 
 
-    print res.get_shape()
+"""
 
+def Responsible(center, confidence):
+
+    """
+    choose which detector is reponsible to object base on which bbox has the maximum IoU value with ground truth bbox, by setting the varaible to True
+
+    others to False 
+
+    In function "Center" , there are some cells, that its has more that one bboxes responsible to the object , so we multiply the center with confidence 
+
+    range of value of center = { 0 , 1 } 
+
+    1 * IoU
+
+    1 * IoU
+
+    that we can get the maximum IoU and the best detector
 
     """
 
-    for b in xrange(B):
-        
-        pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
-        gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
+    iou = tf.mul(center, confidence)
 
-        pred_y = tf.slice(pred, [0,0,b * 5 + 1], [-1,-1,1])
-        gt_y = tf.reshape(tf.slice(y, [0,1], [-1,1]), [-1, 1, 1])
+    # find out maximum IoU
 
-        pred_w = tf.slice(pred, [0,0,b * 5 + 2], [-1,-1,1])
-        gt_w = tf.reshape(tf.slice(y, [0,2], [-1,1]), [-1, 1, 1])
-
-        pred_h = tf.slice(pred, [0,0,b * 5 + 3], [-1,-1,1])
-        gt_h = tf.reshape(tf.slice(y, [0,3], [-1,1]), [-1, 1, 1])
-
-        pred_c = tf.slice(pred, [0,0,b * 5 + 4], [-1,-1,1])
-        gt_c = 1
+    maximum_IoU = tf.reduce_max(iou, 2)
 
 
-        gt_center_x = tf.mul(tf.add(pred_x, pred_w), 0.5)
-        gt_center_y = tf.mul(tf.add(pred_y, pred_h), 0.5)
+    # Create a same shape of tensor as iou 
+
+    for b in xrange(B - 1):
+
+        maximum_IoU = tf.concat(1, [maximum_IoU, maximum_IoU])
+
+    maximum_IoU = tf.reshape(maximum_IoU, [-1, S * S, B])
+
+    # return the bool type tensor 
+
+    res = tf.greater_equal(center, maximum_IoU)
+
+    return res
 
 
-
-
-    """
 
 
 def is_responsible(confidence):
@@ -327,7 +364,7 @@ def is_responsible(confidence):
     assert is_res.dtype == bool and confidence.dtype == tf.float32
     return is_res
 
-def is_appear_in_cell(confidence):
+def Appear(confidence):
 
     return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size, S * S)))
 
@@ -337,6 +374,7 @@ training
 
 """
 
+display_step = 1
 
 print 'load configurence '
 
@@ -345,27 +383,25 @@ lnoobj = tf.constant(0.5, dtype = tf.float32)
 
 pred = conv_net(x, weights, biases, 1)
 
-display_step = 1
+confidence = Confidence(pred, y)
 
+center = Center(y)
 
-confidence = get_confidence(pred, y, B)
+responsible = Responsible(center, confidence)
 
+appear = tf.cast(Appear(confidence), tf.float32)
 
-test = responese(pred, y)
+not_responsible = tf.cast(tf.logical_not(responsible), tf.float32)
 
-is_res = is_responsible(confidence)
-
-is_appear = tf.cast(is_appear_in_cell(confidence), tf.float32)
-
-not_res = tf.cast(tf.logical_not(is_res), tf.float32)
-
-is_res = tf.cast(is_res, tf.float32)
+responsible = tf.cast(responsible, tf.float32)
 
 images, objects = load_imdb_from_raw('5000_raw', cls_name)
 
 images = np.array(images)
 
 loss = None
+
+
 
 for b in xrange(B):
 
@@ -386,6 +422,17 @@ for b in xrange(B):
     pred_c = tf.slice(pred, [0,0,b * 5 + 4], [-1,-1,1])
     gt_c = 1
 
+    bbox = [gt_x, gt_y, gt_w, gt_h]
+
+
+    # convert the x , y to the offset of grid cells and w , h to the range of 0 to 1 by divided by image size
+
+    # offset x , offset y will only located in one grid cells , others will be set to 0 by the variable " Responsible "
+
+    # 
+
+    gt_x, gt_y, gt_w, gt_h = convert_to_one(bbox, n_width, n_height, S)
+
     dx = tf.pow(tf.sub(pred_x, gt_x), 2)
     dy = tf.pow(tf.sub(pred_y, gt_y), 2)
     dw = tf.pow(tf.sub(tf.pow(pred_w,0.5), tf.pow(gt_w,0.5)), 2)
@@ -394,10 +441,10 @@ for b in xrange(B):
 
     if loss == None:
 
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
-        loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
-        loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
+        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+        loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
+        loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
 
   #      print 'is None loss : ', loss_coord_wh.get_shape()
 
@@ -405,10 +452,10 @@ for b in xrange(B):
 
     else:
 
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(is_res,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
-        loss_is_obj = tf.mul(tf.slice(is_res,[0,0,b],[-1,-1,1]),dc)
-        loss_no_obj = tf.mul(tf.slice(not_res,[0,0,b],[-1,-1,1]),dc)
+        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+        loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
+        loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
  #       print 'is loss : ' ,loss_coord_wh.get_shape()
         loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
 #        print 'is loss is loss : ' ,loss.get_shape()
@@ -431,7 +478,7 @@ gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
 
 #print 'gt_cls : ', gt_cls.get_shape()
 
-is_appear = tf.reshape(is_appear, [-1, S * S, 1])
+is_appear = tf.reshape(appear, [-1, S * S, 1])
 gt_cls = tf.mul(is_appear, gt_cls)
 gt_cls = tf.reduce_sum(gt_cls,1)
 gt_cls = tf.reduce_sum(gt_cls,1)
@@ -480,7 +527,7 @@ with tf.Session() as sess:
         print 'step {} '.format(step)
         if step % display_step == 0:
 
-            cost = sess.run([loss],
+            cost = sess.run(loss,
                             feed_dict = {
                                 x:batch_x,
                                 y:batch_y})
