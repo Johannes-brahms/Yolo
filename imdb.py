@@ -1,9 +1,5 @@
-import os
-import time
-import glob
-import lmdb
-import gevent
-import yolo_pb2
+import os, time
+import lmdb, cv2
 import xml.etree.ElementTree as ET
 import numpy as np
 import yolo_pb2, base64
@@ -11,14 +7,8 @@ import tensorflow as tf
 from StringIO import StringIO
 from PIL import Image
 from os.path import join as Path
-from gevent.pool import Pool
 from skimage import io
-from xml.dom import minidom
-from PIL import Image
-import gc
 from yolo_utils import cell_locate
-import cv2
-from gevent import monkey
 
 """
 skimage use RGB to
@@ -134,14 +124,14 @@ def load_imdb_from_raw(database, cls_name):
                 h = datum.object[idx].height    #/ h_ratio / height
                 cls = datum.object[idx].cls
                 
-                object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
+#                object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
 
                 gt_cls = get_index_by_name(cls, cls_name)
 
                 if type(objects) != np.ndarray:
-                    objects = np.hstack((np.array([x, y, w, h]), gt_cls, object_center))
+                    objects = np.hstack((np.array([x, y, w, h]), gt_cls))#, object_center))
                 else:
-                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls, object_center))))
+                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls)#, object_center))))
 
                 images.append(image.flatten())
                 #print 'load Images : {}'.format(num)
@@ -319,15 +309,9 @@ def parallel(database, cores, cls_name):
 
 
 
-def parallel_generate_cache():
-    pass
 
 
 
-#generate_caches('test','train.txt')
-#load_annotation_from_xml('Annotations/xmls/multi/m_1.xml')
 #generate_caches_with_raw('5000_raw', '5000.txt')
 #load_imdb_from_jpg('plate',['plate'])
 #load_imdb_from_raw('5000_raw',['plate'])
-#parallel('ttt',8, ['plate'])
-#thread.wait()

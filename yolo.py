@@ -3,11 +3,13 @@ from skimage import io
 import tensorflow as tf
 from imdbs import load_imdb_from_raw
 import numpy as np
-from gevent import monkey
+from yolo_utils import cell_locate
 #monkey.patch_all()
 
 batch_size = 64
-n_input = 448 * 448
+n_width = 448
+n_height = 448
+n_input = n_width * n_height
 B = 2
 S = 7
 cls_name = ['plate','dog','mouse']
@@ -211,10 +213,12 @@ response_threshold = 0.5
 
 def get_confidence(pred, y, B):
     
-    confidence = []
+    confidence = None
+
+    print 'prediction : ', pred.get_shape()
+    print 'ground truth : ', y.get_shape()
     
     for b in xrange(B):
-        
 
         shape = (-1, int(pred.get_shape()[1]), b+1)    
 
@@ -226,7 +230,77 @@ def get_confidence(pred, y, B):
             confidence = tf.reshape(confidence,shape)
 
     assert confidence.dtype == tf.float32
+
+
     return confidence
+
+
+
+def convert_to_reality():
+
+    pass
+
+def responese(pred, gt):
+
+    res = None
+
+    for b in xrange(B):
+
+        grid_cell_index = tf.cast(tf.reshape(cell_locate((n_width,n_height), gt, 7), [-1]), tf.int32)
+
+        index = tf.range(0, batch_size)
+
+        indices = tf.cast(tf.pack([index, grid_cell_index], axis = 1), tf.int64)
+
+        res_sparse = tf.SparseTensor(indices = indices, values = tf.ones(batch_size), shape = [batch_size , S * S])
+
+
+        if type(res) is not tf.python.framework.ops.Tensor:
+
+            res = tf.sparse_tensor_to_dense(res_sparse)
+        
+        else:
+
+            res = tf.concat(1,[res, tf.sparse_tensor_to_dense(res_sparse)])
+
+
+    res = tf.reshape(res,[-1, S * S, B])
+        
+
+    print 'indices : ', indices.get_shape()
+
+
+    print res.get_shape()
+
+
+    """
+
+    for b in xrange(B):
+        
+        pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
+        gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
+
+        pred_y = tf.slice(pred, [0,0,b * 5 + 1], [-1,-1,1])
+        gt_y = tf.reshape(tf.slice(y, [0,1], [-1,1]), [-1, 1, 1])
+
+        pred_w = tf.slice(pred, [0,0,b * 5 + 2], [-1,-1,1])
+        gt_w = tf.reshape(tf.slice(y, [0,2], [-1,1]), [-1, 1, 1])
+
+        pred_h = tf.slice(pred, [0,0,b * 5 + 3], [-1,-1,1])
+        gt_h = tf.reshape(tf.slice(y, [0,3], [-1,1]), [-1, 1, 1])
+
+        pred_c = tf.slice(pred, [0,0,b * 5 + 4], [-1,-1,1])
+        gt_c = 1
+
+
+        gt_center_x = tf.mul(tf.add(pred_x, pred_w), 0.5)
+        gt_center_y = tf.mul(tf.add(pred_y, pred_h), 0.5)
+
+
+
+
+    """
+
 
 def is_responsible(confidence):
 
@@ -237,23 +311,25 @@ def is_responsible(confidence):
 
     """
 
+    print 'confidence shape : ', confidence.get_shape()
+
     _, cells, B = list(confidence.get_shape())
 
     max_iou = tf.reduce_max(confidence, 2)
     
     for b in xrange(B-1):
+
         max_iou = tf.concat(1,[max_iou,max_iou])
     
     max_iou = tf.reshape(max_iou,[-1, int(cells), int(B)])
     is_res = tf.greater_equal(confidence, max_iou)
 
     assert is_res.dtype == bool and confidence.dtype == tf.float32
-
     return is_res
 
 def is_appear_in_cell(confidence):
 
-    return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size,49)))
+    return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size, S * S)))
 
 """
 
@@ -263,14 +339,19 @@ training
 
 
 print 'load configurence '
+
 lcoord = tf.constant(5, dtype = tf.float32)
 lnoobj = tf.constant(0.5, dtype = tf.float32)
 
 pred = conv_net(x, weights, biases, 1)
+
 display_step = 1
 
-#print 'prediction first : ' , pred.get_shape()
+
 confidence = get_confidence(pred, y, B)
+
+
+test = responese(pred, y)
 
 is_res = is_responsible(confidence)
 
@@ -279,13 +360,12 @@ is_appear = tf.cast(is_appear_in_cell(confidence), tf.float32)
 not_res = tf.cast(tf.logical_not(is_res), tf.float32)
 
 is_res = tf.cast(is_res, tf.float32)
+
 images, objects = load_imdb_from_raw('5000_raw', cls_name)
 
 images = np.array(images)
 
 loss = None
-
-B = 2
 
 for b in xrange(B):
 
