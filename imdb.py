@@ -76,6 +76,8 @@ def generate_caches_with_raw(database, lists):
                 image = io.imread(Path('Images', image_name + '.jpg'), False)
                 w_ratio = float(image.shape[1]) / 448
                 h_ratio = float(image.shape[0]) / 448
+
+                # resize image to 448 x 448
                 image = cv2.resize(image, (448, 448))
 
                 # parse to datum format
@@ -124,7 +126,7 @@ def load_imdb_from_raw(database, cls_name):
                 h = datum.object[idx].height    #/ h_ratio / height
                 cls = datum.object[idx].cls
                 
-#                object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
+                # object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
 
                 gt_cls = get_index_by_name(cls, cls_name)
 
@@ -134,10 +136,10 @@ def load_imdb_from_raw(database, cls_name):
                     objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls)#, object_center))))
 
                 images.append(image.flatten())
-                #print 'load Images : {}'.format(num)
+                # print 'load Images : {}'.format(num)
 
             num += 1
-            #print 'load Images : {}'.format(num)
+            # print 'load Images : {}'.format(num)
 
     assert len(objects) == len(images)
     print '[*] image loading is done ...'

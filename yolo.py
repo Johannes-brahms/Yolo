@@ -1,23 +1,32 @@
+from yolo_utils import cell_locate, convert_to_one
+from imdbs import load_imdb_from_raw
 from utils import IoU
 from skimage import io
 import tensorflow as tf
-from imdbs import load_imdb_from_raw
 import numpy as np
-from yolo_utils import cell_locate, convert_to_one
-#monkey.patch_all()
+import argparse
+import sys
 
-batch_size = 5
-n_width = 448
-n_height = 448
-n_input = n_width * n_height
-cls_name = ['plate','dog','mouse']
-n_class = len(cls_name)
 
-B = 2
-S = 7
+def parse_args():
 
-learning_rate = 0.1
-training_iters = 1000
+    parser = argparse.ArgumentParser(description = 'yolo training script')
+
+    parser.add_argument('--imdb', type = str, help = 'image dataset')
+    parser.add_argument('--snapshot', dest = 'snapshot', type = str, help = 'load weight from snapshot', default = None)
+
+
+    args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+    return args
+
+
+
 
 def conv2d(x, W, b, strides = 1):
 
@@ -32,7 +41,7 @@ def conv2d(x, W, b, strides = 1):
 def maxpool2d(x, k = 2):
     return tf.nn.max_pool(x, ksize = [1, k, k, 1], strides = [1, k, k, 1], padding = 'SAME')
 
-def conv_net(x, weights, biases, dropout):
+def conv_net(x, weights, biases, n_class, dropout):
 
     x = tf.reshape(x, shape = [-1, 448, 448, 3])
 
@@ -77,7 +86,6 @@ def conv_net(x, weights, biases, dropout):
 
     conv23 = conv2d(conv22, weights['conv23'], biases['conv23'])
     conv24 = conv2d(conv23, weights['conv24'], biases['conv24'])
-
     print 'conv1  : ', conv1.get_shape()
     print 'conv2  : ', conv2.get_shape()
     print 'conv3  : ', conv3.get_shape()
@@ -130,87 +138,19 @@ def conv_net(x, weights, biases, dropout):
 
     return fc2
 
-weights = {
+def init(session, saver, pretrained):
 
-    'conv1': tf.Variable(tf.random_normal([7, 7, 3, 64])),
-
-    'conv2': tf.Variable(tf.random_normal([3, 3, 64, 192])),
-
-    'conv3': tf.Variable(tf.random_normal([1, 1, 192, 128])),
-    'conv4': tf.Variable(tf.random_normal([3, 3, 128, 256])),
-    'conv5': tf.Variable(tf.random_normal([1, 1, 256, 256])),
-    'conv6': tf.Variable(tf.random_normal([3, 3, 256, 512])),
-
-    'conv7': tf.Variable(tf.random_normal([1, 1, 512, 256])),
-    'conv8': tf.Variable(tf.random_normal([3, 3, 256, 512])),
-    'conv9': tf.Variable(tf.random_normal([1, 1, 512, 256])),
-    'conv10': tf.Variable(tf.random_normal([3, 3, 256, 512])),
-    'conv11': tf.Variable(tf.random_normal([1, 1, 512, 256])),
-    'conv12': tf.Variable(tf.random_normal([3, 3, 256, 512])),
-    'conv13': tf.Variable(tf.random_normal([1, 1, 512, 256])),
-    'conv14': tf.Variable(tf.random_normal([3, 3, 256, 512])),
-    'conv15': tf.Variable(tf.random_normal([1, 1, 512, 512])),
-    'conv16': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
-
-    'conv17': tf.Variable(tf.random_normal([1, 1, 1024, 512])),
-    'conv18': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
-    'conv19': tf.Variable(tf.random_normal([1, 1, 1024, 512])),
-    'conv20': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
-    'conv21': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
-    'conv22': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
-    'conv23': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
-    'conv24': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
-
-    'fc1':tf.Variable(tf.random_normal([7 * 7 * 1024, 4096])),
-    'fc2':tf.Variable(tf.random_normal([4096, 7 * 7 * (n_class + 5 * B)])),
-    #'out':tf.Variable(tf.random_normal([]))
-}
-
-biases = {
-
-    'conv1': tf.Variable(tf.random_normal([64])),
-
-    'conv2': tf.Variable(tf.random_normal([192])),
-
-    'conv3': tf.Variable(tf.random_normal([128])),
-    'conv4': tf.Variable(tf.random_normal([256])),
-    'conv5': tf.Variable(tf.random_normal([256])),
-    'conv6': tf.Variable(tf.random_normal([512])),
-
-    'conv7': tf.Variable(tf.random_normal([256])),
-    'conv8': tf.Variable(tf.random_normal([512])),
-    'conv9': tf.Variable(tf.random_normal([256])),
-    'conv10': tf.Variable(tf.random_normal([512])),
-    'conv11': tf.Variable(tf.random_normal([256])),
-    'conv12': tf.Variable(tf.random_normal([512])),
-    'conv13': tf.Variable(tf.random_normal([256])),
-    'conv14': tf.Variable(tf.random_normal([512])),
-    'conv15': tf.Variable(tf.random_normal([512])),
-    'conv16': tf.Variable(tf.random_normal([1024])),
-
-    'conv17': tf.Variable(tf.random_normal([512])),
-    'conv18': tf.Variable(tf.random_normal([1024])),
-    'conv19': tf.Variable(tf.random_normal([512])),
-    'conv20': tf.Variable(tf.random_normal([1024])),
-    'conv21': tf.Variable(tf.random_normal([1024])),
-    'conv22': tf.Variable(tf.random_normal([1024])),
-    'conv23': tf.Variable(tf.random_normal([1024])),
-    'conv24': tf.Variable(tf.random_normal([1024])),
-
-    'fc1':tf.Variable(tf.random_normal([4096])),
-    'fc2':tf.Variable(tf.random_normal([S * S * (n_class + 5 * B)])),
-    #'out':tf.Variable(tf.random_normal([])),
-}
+    pass
 
 
-x = tf.placeholder(tf.float32, [None, n_input * 3]) # feed_dict (unknown batch , features)
-y = tf.placeholder(tf.float32, [None, n_class + 4]) # feed_dict (unknown batch, prob for each classes)
+def save(session, saver, weights, prefix, step):
 
+    n = '{}_{}.model'.format(prefix, step)
 
-is_obj = None
-not_obj = None
+    p = saver.save(session, n)
 
-response_threshold = 0.5
+    return p
+
 
 def Confidence(pred, y):
     
@@ -236,21 +176,14 @@ def Confidence(pred, y):
 
     return confidence
 
+def Center(groundtruth, batch):
+
+    """
+
+    check which cell is the center of the object located
 
 
-def convert_to_reality():
-
-    pass
-
-
-"""
-
-check which cell is the center of the object located
-
-
-"""
-
-def Center(groundtruth):
+    """
 
     c = None
 
@@ -263,7 +196,7 @@ def Center(groundtruth):
 
         # generate index for terrible tensorflow slicing tensor
 
-        index = tf.range(0, batch_size)
+        index = tf.range(0, batch)
 
         # pack index with grid cell index 
 
@@ -271,7 +204,7 @@ def Center(groundtruth):
 
         # set the " center variable " to one ( which is boolean type ), in terms of grid cell index  
 
-        center_sparse = tf.SparseTensor(indices = indices, values = tf.ones(batch_size), shape = [batch_size , S * S])
+        center_sparse = tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])
 
         # convert sparse tensor to dense tensor, and set others to 0 , represent that they are no responsible to the object
 
@@ -288,17 +221,12 @@ def Center(groundtruth):
         
     return c
 
-
-"""
-
-chose the best predictor
-
-
-"""
-
 def Responsible(center, confidence):
 
     """
+
+    chose the best predictor
+
     choose which detector is reponsible to object base on which bbox has the maximum IoU value with ground truth bbox, by setting the varaible to True
 
     others to False 
@@ -336,204 +264,311 @@ def Responsible(center, confidence):
 
     return res
 
+def Appear(confidence, batch):
 
+    return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch, S * S)))
 
-
-def is_responsible(confidence):
-
-    """
-    threshold = max of confidence
-
-    so is_res will be a boolean vector, present wheather the cell is responsible for the object
-
-    """
-
-    print 'confidence shape : ', confidence.get_shape()
-
-    _, cells, B = list(confidence.get_shape())
-
-    max_iou = tf.reduce_max(confidence, 2)
-    
-    for b in xrange(B-1):
-
-        max_iou = tf.concat(1,[max_iou,max_iou])
-    
-    max_iou = tf.reshape(max_iou,[-1, int(cells), int(B)])
-    is_res = tf.greater_equal(confidence, max_iou)
-
-    assert is_res.dtype == bool and confidence.dtype == tf.float32
-    return is_res
-
-def Appear(confidence):
-
-    return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch_size, S * S)))
+def convert_to_reality():
+    pass
 
 """
 
 training
 
 """
+def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 448, n_height = 448, display = 20, threshold = 0.5, snapshot = None):
+    
+    print '[*] loading configurence '
 
-display_step = 1
+    n_class = len(cls)
 
-print 'load configurence '
+    x = tf.placeholder(tf.float32, [None, n_input * 3]) # feed_dict (unknown batch , features)
+    y = tf.placeholder(tf.float32, [None, n_class + 4]) # feed_dict (unknown batch, prob for each classes)
+  
+    is_obj = None
+    not_obj = None
+    loss = None
 
-lcoord = tf.constant(5, dtype = tf.float32)
-lnoobj = tf.constant(0.5, dtype = tf.float32)
+    response_threshold = threshold
+    display_step = display
 
-pred = conv_net(x, weights, biases, 1)
+    weights = {
 
-confidence = Confidence(pred, y)
+        'conv1': tf.Variable(tf.random_normal([7, 7, 3, 64])),
 
-center = Center(y)
+        'conv2': tf.Variable(tf.random_normal([3, 3, 64, 192])),
 
-responsible = Responsible(center, confidence)
+        'conv3': tf.Variable(tf.random_normal([1, 1, 192, 128])),
+        'conv4': tf.Variable(tf.random_normal([3, 3, 128, 256])),
+        'conv5': tf.Variable(tf.random_normal([1, 1, 256, 256])),
+        'conv6': tf.Variable(tf.random_normal([3, 3, 256, 512])),
 
-appear = tf.cast(Appear(confidence), tf.float32)
+        #'conv7': tf.Variable(tf.random_normal([1, 1, 512, 256])),
+        #'conv8': tf.Variable(tf.random_normal([3, 3, 256, 512])),
+        'conv9': tf.Variable(tf.random_normal([1, 1, 512, 256])),
+        'conv10': tf.Variable(tf.random_normal([3, 3, 256, 512])),
+        #'conv11': tf.Variable(tf.random_normal([1, 1, 512, 256])),
+        #'conv12': tf.Variable(tf.random_normal([3, 3, 256, 512])),
+        #'conv13': tf.Variable(tf.random_normal([1, 1, 512, 256])),
+        #'conv14': tf.Variable(tf.random_normal([3, 3, 256, 512])),
+        #'conv15': tf.Variable(tf.random_normal([1, 1, 512, 512])),
+        'conv16': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
 
-not_responsible = tf.cast(tf.logical_not(responsible), tf.float32)
+        'conv17': tf.Variable(tf.random_normal([1, 1, 1024, 512])),
+        'conv18': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
+        'conv19': tf.Variable(tf.random_normal([1, 1, 1024, 512])),
+        'conv20': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
+        'conv21': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
+        'conv22': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
+        'conv23': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
+        'conv24': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
 
-responsible = tf.cast(responsible, tf.float32)
+        'fc1':tf.Variable(tf.random_normal([7 * 7 * 1024, 4096])),
+        'fc2':tf.Variable(tf.random_normal([4096, 7 * 7 * (n_class + 5 * B)])),
+ 
+    }
 
-images, objects = load_imdb_from_raw('5000_raw', cls_name)
+    biases = {
 
-images = np.array(images)
+        'conv1': tf.Variable(tf.random_normal([64])),
 
-loss = None
+        'conv2': tf.Variable(tf.random_normal([192])),
 
+        'conv3': tf.Variable(tf.random_normal([128])),
+        'conv4': tf.Variable(tf.random_normal([256])),
+        'conv5': tf.Variable(tf.random_normal([256])),
+        'conv6': tf.Variable(tf.random_normal([512])),
 
+        #'conv7': tf.Variable(tf.random_normal([256])),
+        #'conv8': tf.Variable(tf.random_normal([512])),
+        'conv9': tf.Variable(tf.random_normal([256])),
+        'conv10': tf.Variable(tf.random_normal([512])),
+        #'conv11': tf.Variable(tf.random_normal([256])),
+        #'conv12': tf.Variable(tf.random_normal([512])),
+        #'conv13': tf.Variable(tf.random_normal([256])),
+        #'conv14': tf.Variable(tf.random_normal([512])),
+        #'conv15': tf.Variable(tf.random_normal([512])),
+        'conv16': tf.Variable(tf.random_normal([1024])),
 
-for b in xrange(B):
+        'conv17': tf.Variable(tf.random_normal([512])),
+        'conv18': tf.Variable(tf.random_normal([1024])),
+        'conv19': tf.Variable(tf.random_normal([512])),
+        'conv20': tf.Variable(tf.random_normal([1024])),
+        'conv21': tf.Variable(tf.random_normal([1024])),
+        'conv22': tf.Variable(tf.random_normal([1024])),
+        'conv23': tf.Variable(tf.random_normal([1024])),
+        'conv24': tf.Variable(tf.random_normal([1024])),
 
-    #print 'prediction : ', pred.get_shape()
+        'fc1':tf.Variable(tf.random_normal([4096])),
+        'fc2':tf.Variable(tf.random_normal([S * S * (n_class + 5 * B)])),
+        #'out':tf.Variable(tf.random_normal([])),
+    }
+    
+    lcoord = tf.constant(5, dtype = tf.float32)
+    lnoobj = tf.constant(0.5, dtype = tf.float32)
+  
+    # forward propagate
 
-    pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
-    gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
+    pred = conv_net(x, weights, biases, n_class, 1)
 
-    pred_y = tf.slice(pred, [0,0,b * 5 + 1], [-1,-1,1])
-    gt_y = tf.reshape(tf.slice(y, [0,1], [-1,1]), [-1, 1, 1])
+    confidence = Confidence(pred, y)
+    center = Center(y, batch)
+    responsible = Responsible(center, confidence)
+    appear = tf.cast(Appear(confidence, batch), tf.float32)
+    not_responsible = tf.cast(tf.logical_not(responsible), tf.float32)
+    responsible = tf.cast(responsible, tf.float32)
 
-    pred_w = tf.slice(pred, [0,0,b * 5 + 2], [-1,-1,1])
-    gt_w = tf.reshape(tf.slice(y, [0,2], [-1,1]), [-1, 1, 1])
+    # load dataset
 
-    pred_h = tf.slice(pred, [0,0,b * 5 + 3], [-1,-1,1])
-    gt_h = tf.reshape(tf.slice(y, [0,3], [-1,1]), [-1, 1, 1])
+    images, objects = load_imdb_from_raw(dataset, cls)
+    images = np.array(images)
 
-    pred_c = tf.slice(pred, [0,0,b * 5 + 4], [-1,-1,1])
-    gt_c = 1
+    # create loss function 
+    
+    for b in xrange(B):
 
-    bbox = [gt_x, gt_y, gt_w, gt_h]
+        # print 'prediction : ', pred.get_shape()
 
+        pred_x = tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1])
+        gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
 
-    # convert the x , y to the offset of grid cells and w , h to the range of 0 to 1 by divided by image size
+        pred_y = tf.slice(pred, [0,0,b * 5 + 1], [-1,-1,1])
+        gt_y = tf.reshape(tf.slice(y, [0,1], [-1,1]), [-1, 1, 1])
 
-    # offset x , offset y will only located in one grid cells , others will be set to 0 by the variable " Responsible "
+        pred_w = tf.slice(pred, [0,0,b * 5 + 2], [-1,-1,1])
+        gt_w = tf.reshape(tf.slice(y, [0,2], [-1,1]), [-1, 1, 1])
 
-    # 
+        pred_h = tf.slice(pred, [0,0,b * 5 + 3], [-1,-1,1])
+        gt_h = tf.reshape(tf.slice(y, [0,3], [-1,1]), [-1, 1, 1])
 
-    gt_x, gt_y, gt_w, gt_h = convert_to_one(bbox, n_width, n_height, S)
+        pred_c = tf.slice(pred, [0,0,b * 5 + 4], [-1,-1,1])
+        gt_c = 1
 
-    dx = tf.pow(tf.sub(pred_x, gt_x), 2)
-    dy = tf.pow(tf.sub(pred_y, gt_y), 2)
-    dw = tf.pow(tf.sub(tf.pow(pred_w,0.5), tf.pow(gt_w,0.5)), 2)
-    dh = tf.pow(tf.sub(tf.pow(pred_h,0.5), tf.pow(gt_h,0.5)), 2)
-    dc = tf.pow(tf.sub(pred_c, gt_c), 2)
+        bbox = [gt_x, gt_y, gt_w, gt_h]
 
-    if loss == None:
+        # convert the x , y to the offset of grid cells and w , h to the range of 0 to 1 by divided by image size
 
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
-        loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
-        loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
+        # offset x , offset y will only located in one grid cells , others will be set to 0 by the variable " Responsible "
 
-  #      print 'is None loss : ', loss_coord_wh.get_shape()
+        gt_x, gt_y, gt_w, gt_h = convert_to_one(bbox, n_width, n_height, S)
 
-        loss = tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj))
+        dx = tf.pow(tf.sub(pred_x, gt_x), 2)
+        dy = tf.pow(tf.sub(pred_y, gt_y), 2)
+        dw = tf.pow(tf.sub(tf.pow(pred_w,0.5), tf.pow(gt_w,0.5)), 2)
+        dh = tf.pow(tf.sub(tf.pow(pred_h,0.5), tf.pow(gt_h,0.5)), 2)
+        dc = tf.pow(tf.sub(pred_c, gt_c), 2)
 
-    else:
+        if loss == None:
 
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
-        loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
-        loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
- #       print 'is loss : ' ,loss_coord_wh.get_shape()
-        loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
-#        print 'is loss is loss : ' ,loss.get_shape()
+            loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+            loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+            loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
+            loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
 
-    index = b + 1
+            # print 'is None loss : ', loss_coord_wh.get_shape()
 
+            loss = tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj))
 
-"""
-reshape loss [batch, cell, bbox] to [batch, bbox], so we can sum over all bbox
-
-"""
-
-loss = tf.reshape(tf.reduce_sum(loss,1), [-1])
-
-y_cls = tf.reshape(tf.slice(pred, [0,0,5 * index], [-1,-1,-1]),[-1, S * S, n_class])
-
-pred_cls = tf.slice(pred, [0,0,5 * index], [-1,-1,-1])
-
-gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
-
-#print 'gt_cls : ', gt_cls.get_shape()
-
-is_appear = tf.reshape(appear, [-1, S * S, 1])
-gt_cls = tf.mul(is_appear, gt_cls)
-gt_cls = tf.reduce_sum(gt_cls,1)
-gt_cls = tf.reduce_sum(gt_cls,1)
-loss = tf.add(loss, gt_cls)
-
-assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
-loss = tf.reduce_mean(loss)
-
-optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-
-init = tf.initialize_all_variables()
-
-
-with tf.Session() as sess:
-    sess.run(init)
-    step = 0
-
-    print 'start training ... '
-
-    while step * batch_size < training_iters:
-
-        batch_x = []
-        batch_y = []
-
-        start = step * batch_size % len(images)
-        end = (step + 1) * batch_size % len(images) # from zero
-
-        if end < start:
-            batch_x = np.vstack((images[start : ],images[:end]))
-            batch_y = np.vstack((objects[start : ],objects[:end]))
         else:
-            batch_x = images[start : end]
-            batch_y = objects[start : end]
+
+            loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+            loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+            loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
+            loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
+
+            # print 'is loss : ' ,loss_coord_wh.get_shape()
+
+            loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
+
+            # print 'is loss is loss : ' ,loss.get_shape()
+
+        index = b + 1
+
+    """
+    reshape loss [batch, cell, bbox] to [batch, bbox], so we can sum over all bbox
+
+    """
+
+    loss = tf.reshape(tf.reduce_sum(loss,1), [-1])
+
+    y_cls = tf.reshape(tf.slice(pred, [0,0,5 * index], [-1,-1,-1]),[-1, S * S, n_class])
+
+    pred_cls = tf.slice(pred, [0,0,5 * index], [-1,-1,-1])
+
+    gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
+
+    is_appear = tf.reshape(appear, [-1, S * S, 1])
+    gt_cls = tf.mul(is_appear, gt_cls)
+    gt_cls = tf.reduce_sum(gt_cls,1)
+    gt_cls = tf.reduce_sum(gt_cls,1)
+    loss = tf.add(loss, gt_cls)
+
+    assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
+
+    loss = tf.reduce_mean(loss)
+
+    optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+
+    with tf.Session() as sess:
 
         
-        assert batch_y.shape[-1] == int(y.get_shape()[-1])
 
-        print 'batch_y:',batch_y.shape
-        print 'batch_x:',batch_x.shape
+        saver = tf.train.Saver()
+
+        if snapshot is not None:
+
+            saver.restore(sess, snapshot)
+
+            #tf.report_uninitialized_variables(var_list=[weights['conv1']], name='report_uninitialized_variables')
+
+            ##rint tf.is_variable_initialized(weights['conv1'])
+
+            print '[*] load from snapshot : {}'.format(snapshot)
+
+            step = int(snapshot.split('_')[-1].split('.')[0]) / batch
+
+            # some learning rate modify 
+
+        else:
+
+            init = tf.initialize_all_variables()
+
+            sess.run(init)
+
+            step = 0
+
+        print '[*] start training ... '
+
+        while step * batch < training_iters:
+
+            #print '[*] step {} '.format(step)
+            batch_x = []
+            batch_y = []
+            start = step * batch % len(images)
+            end = (step + 1) * batch % len(images) # from zero
+
+            if end < start:
+                batch_x = np.vstack((images[start : ],images[:end]))
+                batch_y = np.vstack((objects[start : ],objects[:end]))
+            else:
+                batch_x = images[start : end]
+                batch_y = objects[start : end]
+
+            
+            assert batch_y.shape[-1] == int(y.get_shape()[-1])
+
+            #print 'batch_y:',batch_y.shape
+            #print 'batch_x:',batch_x.shape
 
 
-        sess.run(optimizer, feed_dict = {
-                                    x:batch_x,
-                                    y:batch_y})
+            sess.run(optimizer, feed_dict = {
+                                        x:batch_x,
+                                        y:batch_y})
 
-        print 'step {} '.format(step)
-        if step % display_step == 0:
+            
 
-            cost = sess.run(loss,
-                            feed_dict = {
-                                x:batch_x,
-                                y:batch_y})
+            if step % display_step == 0:
 
-            print "Iter " , str(step*batch_size) + ", Minibatch Loss = " , cost
-            #, Training Accuracy= " ,"{:.5f}".format(acc)
-        step += 1
+                cost = sess.run(loss,feed_dict = {
+                                        x:batch_x,
+                                        y:batch_y})
 
-    print "Optimization Finished!"
+                print "Iter " , str(step * batch) + ", Minibatch Loss = " , cost
+
+            step += 1
+
+        p = save(sess, saver, weights, 'plate', step * batch)
+
+        print '[*] Model saved in file : {}'.format(p)
+
+        print "[*] Optimization Finished!"
+
+
+
+
+if __name__ == '__main__':
+
+    args = parse_args()
+
+    batch = 64
+    display = 1
+    dataset = '5000_raw'
+    n_width = 448
+    n_height = 448
+    n_input = n_width * n_height
+    cls = ['plate']
+
+    B = 2
+    S = 7
+
+    learning_rate = 1
+    training_iters = 1500
+
+    train(learning_rate, training_iters, batch, cls, display = 1, snapshot = args.snapshot)
+
+
+
+
+
+
+
