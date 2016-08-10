@@ -213,7 +213,7 @@ def test_proto():
         Object.height = 7
         Object.cls = 'cat'
         txn.put('test', datum.SerializeToString())
-
+"""
 def load_imdb_from_jpg(database, cls_name, start, end):
     start = time.time()
 
@@ -281,8 +281,9 @@ def load_imdb_from_jpg(database, cls_name, start, end):
         assert len(objects) == len(images)
         print 'consume : ', time.time() - start
     return images, objects
+"""
 
-
+"""
 def parallel(database, cores, cls_name):
     env = lmdb.open(database, readonly = True)
     with env.begin() as txn:
@@ -310,7 +311,7 @@ def parallel(database, cores, cls_name):
         print 'consume : ', time.time() - start
 
 
-
+"""
 
 
 
