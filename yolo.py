@@ -421,6 +421,8 @@ def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 44
         if loss == None:
 
             loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))
+
+            tf.Print(loss_coord_xy, [loss_coord_xy])
             loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
             loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
             loss_no_obj = tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc)
@@ -467,11 +469,15 @@ def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 44
 
     loss = tf.reduce_mean(loss)
 
+
+
+
     optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     with tf.Session() as sess:
-
         
+        
+        #summary_writer = tf.train.SummaryWriter('logs', sess.graph)
 
         saver = tf.train.Saver()
 
@@ -533,7 +539,11 @@ def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 44
                                         x:batch_x,
                                         y:batch_y})
 
+                
+                #summary_writer.add_summary(cost, step)
+
                 print "Iter " , str(step * batch) + ", Minibatch Loss = " , cost
+                print 'gt {}'.format(gt_w)
 
             step += 1
 
@@ -561,8 +571,8 @@ if __name__ == '__main__':
     B = 2
     S = 7
 
-    learning_rate = 1
-    training_iters = 1500
+    learning_rate = 10
+    training_iters = 5000
 
     train(learning_rate, training_iters, batch, cls, display = 1, snapshot = args.snapshot)
 
