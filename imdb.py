@@ -133,7 +133,7 @@ def load_imdb_from_raw(database, cls_name):
                 if type(objects) != np.ndarray:
                     objects = np.hstack((np.array([x, y, w, h]), gt_cls))#, object_center))
                 else:
-                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls)#, object_center))))
+                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls))))#, object_center))))
 
                 images.append(image.flatten())
                 # print 'load Images : {}'.format(num)
