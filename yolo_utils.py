@@ -1,5 +1,5 @@
 import tensorflow as tf
-def cell_locate(shape,bbox, S):
+def cell_locate(shape, bbox, S):
 
     height, width = shape
 
@@ -95,5 +95,40 @@ def convert_to_one(bbox, width, height, S):
             h.dtype == tf.float32
 
     bbox = [offset_x, offset_y, w, h]
+
+    return bbox
+
+
+def convert_to_reality(bbox, width, height, S):
+
+    relative_center_x, relative_center_y, global_w, global_h = bbox
+
+    w = tf.cast(tf.mul(global_w, width), tf.int32)
+    h = tf.cast(tf.mul(global_h, height), tf.int32)
+
+    cell_w = width / S
+    cell_h = height / S
+
+    index = tf.reshape(tf.range(S * S),[-1,1])
+
+    cell_coord_y = tf.div(index, S)
+    cell_coord_x = tf.mod(index, S)
+
+    t1 = tf.reshape(tf.mul(cell_coord_x, cell_w), [-1])
+    print 't1 :', t1.get_shape()
+    print 'relative x ', relative_center_x.get_shape()
+    print 'cell coord x : ', cell_coord_x.get_shape()
+    real_x = tf.add(tf.reshape(tf.mul(cell_coord_x, cell_w), [-1]), tf.cast(tf.mul(relative_center_x, cell_w), tf.int32))
+    real_y = tf.add(tf.reshape(tf.mul(cell_coord_y, cell_h), [-1]), tf.cast(tf.mul(relative_center_y, cell_h), tf.int32))
+
+    print 'readl x ', real_x.get_shape()
+
+
+    assert real_x.dtype == tf.int32 and \
+            real_y.dtype == tf.int32 and \
+            w.dtype == tf.int32 and \
+            h.dtype == tf.int32
+
+    bbox = [real_x, real_y, w, h]
 
     return bbox

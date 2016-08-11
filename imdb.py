@@ -37,6 +37,9 @@ def merge_roidbs(filename, datum, ratio):
         xmax = float(bbox.find('xmax').text) / w_ratio #/ datum.width# - 1
         ymax = float(bbox.find('ymax').text) / h_ratio #/ datum.height# - 1
 
+        print 'xmin :', xmin
+
+
         cls = obj.find('name').text
 
         #print 'class : {}, xmin : {}, ymix : {}, xmax : {}, ymax : {}'.format(cls, xmin, ymin, xmax, ymax)
@@ -48,6 +51,8 @@ def merge_roidbs(filename, datum, ratio):
         o.y = int(ymin)
         o.width = int(xmax - xmin)
         o.height = int(ymax - ymin)
+
+        print o.x
         o.cls = cls
 
     assert len(objects) > 0
@@ -116,6 +121,7 @@ def load_imdb_from_raw(database, cls_name):
             datum.ParseFromString(raw)
 
             image = np.fromstring(datum.data, dtype=np.uint8)
+           
             image = image.reshape((datum.height,  datum.width,  datum.channels))
 
             for idx in xrange(datum.object_num):
@@ -126,6 +132,11 @@ def load_imdb_from_raw(database, cls_name):
                 h = datum.object[idx].height    #/ h_ratio / height
                 cls = datum.object[idx].cls
                 
+
+                #print "x : ", x
+                #print "y : ", y
+                #print "w : ", w
+                #print "h : ", h
                 # object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
 
                 gt_cls = get_index_by_name(cls, cls_name)
@@ -313,8 +324,9 @@ def parallel(database, cores, cls_name):
 
 """
 
+if __name__ == '__main__':
 
+    generate_caches_with_raw('5000_raw', '5000.txt')
 
-#generate_caches_with_raw('5000_raw', '5000.txt')
 #load_imdb_from_jpg('plate',['plate'])
 #load_imdb_from_raw('5000_raw',['plate'])
