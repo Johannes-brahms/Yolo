@@ -181,27 +181,26 @@ def Confidence(pred, y):
     
     for b in xrange(B):
 
-        shape = (-1, int(pred.get_shape()[1]), b + 1)
-
-        pred_x = tf.reshape(tf.slice(pred, [0,0,b * 5 + 0], [-1,-1,1]), [-1, S * S ])
-        pred_y = tf.reshape(tf.slice(pred, [0,0,b * 5 + 1], [-1,-1,1]), [-1, S * S ])
-        pred_w = tf.reshape(tf.slice(pred, [0,0,b * 5 + 2], [-1,-1,1]), [-1, S * S ])
-        pred_h = tf.reshape(tf.slice(pred, [0,0,b * 5 + 3], [-1,-1,1]), [-1, S * S ])
+        #shape = (-1, int(pred.get_shape()[1]), b + 1)
+        print b
+        pred_x = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1]), [-1, S * S ])
+        pred_y = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 1], [-1, -1, 1]), [-1, S * S ])
+        pred_w = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1]), [-1, S * S ])
+        pred_h = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1]), [-1, S * S ])
    
         pred_bbox = [pred_x, pred_y, pred_w, pred_h]
 
         pred_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
 
+        temp =  tf.reshape(IoU(pred_bbox, y[:,:4]), [-1, S * S, 1])
+
         if type(confidence) is not tf.python.framework.ops.Tensor:
-            confidence = IoU(pred_bbox, y[:,:4])
+
+            confidence = tf.identity(temp)
         else:
-            confidence = tf.pack([confidence, IoU(pred_bbox, y[:,:4])], axis = 2)
-
+            confidence = tf.pack([confidence, temp], axis = 2)
+            confidence =  tf.reshape(IoU(pred_bbox, y[:,:4]), [-1, S * S, b + 1])
     assert confidence.dtype == tf.float32
-
-    #confidence = tf.cast(confidence, float)
-
-    #confidence = tf.reshape(confidence,[-1, S * S, B])
 
     return confidence, pred_bbox[0]
 
@@ -306,7 +305,7 @@ def Appear(confidence, batch):
 training
 
 """
-def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 448, n_height = 448, display = 20, threshold = 0.5, snapshot = None):
+def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_width = 448, n_height = 448, display = 20, threshold = 0.5, snapshot = None):
     
     print '[*] loading configurence '
 
@@ -315,8 +314,14 @@ def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 44
     # load dataset
 
     images, objects = load_imdb_from_raw(dataset, cls)
+   # print 'dddddddddddawdawd', len(images)
+    #print 'dddddddddddddd', images[0].shape
     images = np.array(images)
 
+    #print 'dddddddddddddd', images[0].shape
+    #print ' total ' ,objects.shape
+    ##print images.dtype
+    #print 'dawdawd', images.astype(int)
     x = tf.placeholder(tf.float32, [None, n_input * 3]) # feed_dict (unknown batch , features)
     y = tf.placeholder(tf.float32, [None, n_class + 4]) # feed_dict (unknown batch, prob for each classes)
   
@@ -565,8 +570,8 @@ def train(learning_rate, iters, batch, cls, n_bbox = 2, n_cell = 7, n_width = 44
             
             assert batch_y.shape[-1] == int(y.get_shape()[-1])
 
-            #print 'batch_y:',batch_y.shape
-            #print 'batch_x:',batch_x.shape
+            print 'batch_y:',batch_y.shape
+            print 'batch_x:',batch_x.shape
 
 
             sess.run(optimizer, feed_dict = {
@@ -632,21 +637,24 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 64
+    batch = 5
     display = 1
     dataset = '5000_raw'
+    #dataset = 'char'
     n_width = 448
     n_height = 448
     n_input = n_width * n_height
     cls = ['plate']
+    #cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
 
-    B = 2
+    #assert len(cls) == 35
+
+    B = 4
     S = 7
 
     learning_rate = 0.1
-    training_iters = 10000
-
-    train(learning_rate, training_iters, batch, cls, display = 1, snapshot = args.snapshot)
+    training_iters = 1
+    train(learning_rate, training_iters, batch, cls, dataset,display = 1, snapshot = args.snapshot)
 
 
 

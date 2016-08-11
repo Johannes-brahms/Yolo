@@ -18,7 +18,7 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 def merge_roidbs(filename, datum, ratio):
 
-    path = Path('Annotations', 'xmls', filename + '.xml')
+    path = Path('Annotations', 'xml', filename + '.xml')
 
     xml = ET.parse(path)
 
@@ -42,6 +42,8 @@ def merge_roidbs(filename, datum, ratio):
 
         cls = obj.find('name').text
 
+        print 'class :', cls
+
         #print 'class : {}, xmin : {}, ymix : {}, xmax : {}, ymax : {}'.format(cls, xmin, ymin, xmax, ymax)
 
         #obj.append((cls, xmin, ymin, xmax, ymax))
@@ -60,6 +62,7 @@ def merge_roidbs(filename, datum, ratio):
     datum.object_num = len(objects)
     return datum
 def get_index_by_name(cls, cls_name):
+    #print 'class ', cls
     cls_num = len(cls_name)
     index = cls_name.index(cls)
     gt = np.zeros(cls_num)
@@ -131,14 +134,6 @@ def load_imdb_from_raw(database, cls_name):
                 w = datum.object[idx].width     #/ w_ratio / width
                 h = datum.object[idx].height    #/ h_ratio / height
                 cls = datum.object[idx].cls
-                
-
-                #print "x : ", x
-                #print "y : ", y
-                #print "w : ", w
-                #print "h : ", h
-                # object_center, bbox = cell_locate([datum.height, datum, width],[x, y, w, h])
-
                 gt_cls = get_index_by_name(cls, cls_name)
 
                 if type(objects) != np.ndarray:
@@ -147,6 +142,7 @@ def load_imdb_from_raw(database, cls_name):
                     objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls))))#, object_center))))
 
                 images.append(image.flatten())
+                print type(image.flatten())
                 # print 'load Images : {}'.format(num)
 
             num += 1
@@ -155,6 +151,10 @@ def load_imdb_from_raw(database, cls_name):
     assert len(objects) == len(images)
     print '[*] image loading is done ...'
     print '[*] consume :', time.time() - start
+    #images = np.array(images, dtype = np.int32)
+
+    #print images.dtype
+    #print images.shape
     return images, objects
 
 
@@ -326,7 +326,7 @@ def parallel(database, cores, cls_name):
 
 if __name__ == '__main__':
 
-    generate_caches_with_raw('5000_raw', '5000.txt')
+    generate_caches_with_raw('char', 'Images/train.txt')
 
 #load_imdb_from_jpg('plate',['plate'])
 #load_imdb_from_raw('5000_raw',['plate'])
