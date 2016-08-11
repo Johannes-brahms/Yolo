@@ -176,13 +176,8 @@ def Confidence(pred, y):
     
     confidence = None
 
-    print 'prediction : ', pred.get_shape()
-    print 'ground truth : ', y.get_shape()
-    
     for b in xrange(B):
 
-        #shape = (-1, int(pred.get_shape()[1]), b + 1)
-        print b
         pred_x = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1]), [-1, S * S ])
         pred_y = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 1], [-1, -1, 1]), [-1, S * S ])
         pred_w = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1]), [-1, S * S ])
@@ -192,14 +187,16 @@ def Confidence(pred, y):
 
         pred_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
 
-        temp =  tf.reshape(IoU(pred_bbox, y[:,:4]), [-1, S * S, 1])
+        temp = tf.reshape(IoU(pred_bbox, y[:,:4]), [-1, S * S, 1])
 
         if type(confidence) is not tf.python.framework.ops.Tensor:
 
-            confidence = tf.identity(temp)
+            confidence = temp
+
         else:
-            confidence = tf.pack([confidence, temp], axis = 2)
-            confidence =  tf.reshape(IoU(pred_bbox, y[:,:4]), [-1, S * S, b + 1])
+     
+            confidence = tf.concat(2, [confidence, temp])
+
     assert confidence.dtype == tf.float32
 
     return confidence, pred_bbox[0]
@@ -233,16 +230,25 @@ def Center(groundtruth, batch):
         # set the " center variable " to one ( which is boolean type ), in terms of grid cell index  
 
         center_sparse = tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])
-
+        center_sparse = tf.sparse_tensor_to_dense(center_sparse)
+        
+        # center_sparse = tf.reshape(center_sparse, [-1, S * S, 1])
         # convert sparse tensor to dense tensor, and set others to 0 , represent that they are no responsible to the object
 
         if type(c) is not tf.python.framework.ops.Tensor:
 
-            c = tf.sparse_tensor_to_dense(center_sparse)
+            c = tf.reshape(center_sparse, [-1, S * S, 1])
           
         else:
            
-            c = tf.pack([c, tf.sparse_tensor_to_dense(center_sparse)], axis = 2)
+            center_sparse = tf.reshape(center_sparse, [-1, S * S, 1])
+
+            c = tf.concat(2, [c, center_sparse])
+            #c = tf.pack([c,tf.sparse_tensor_to_dense(center_sparse)], axis = 2)
+
+    #c = tf.reshape(c, [-1, S * S, B])
+
+    print 'c shape ', c.get_shape()
 
     return c
 
@@ -272,23 +278,17 @@ def Responsible(center, confidence):
 
     # find out maximum IoU
 
-    maximum_IoU = tf.reduce_max(iou, 2)
-
+    maximum_IoU = tf.reshape(tf.reduce_max(iou, 2), [-1, S * S, 1])
 
     # Create a same shape of tensor as iou 
 
-    temp = tf.pack([maximum_IoU, maximum_IoU], axis = 2)
+    temp = tf.concat(2, [maximum_IoU, maximum_IoU])
 
     for b in xrange(B - 2):
 
-        temp = tf.pack([temp, maximum_IoU], axis = 2)
-
-
-    #maximum_IoU = tf.reshape(temp, [-1, S * S, B])
+        temp = tf.concat(2, [temp, maximum_IoU])
 
     maximum_IoU = temp
-
-    print 'maxasdawd : ', maximum_IoU.get_shape()
 
     # return the bool type tensor 
 
@@ -570,8 +570,8 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
             
             assert batch_y.shape[-1] == int(y.get_shape()[-1])
 
-            print 'batch_y:',batch_y.shape
-            print 'batch_x:',batch_x.shape
+            print 'batch_y:',batch_y
+            print 'batch_x:',batch_x
 
 
             sess.run(optimizer, feed_dict = {
@@ -649,11 +649,11 @@ if __name__ == '__main__':
 
     #assert len(cls) == 35
 
-    B = 4
+    B = 2
     S = 7
 
     learning_rate = 0.1
-    training_iters = 1
+    training_iters = 10000
     train(learning_rate, training_iters, batch, cls, dataset,display = 1, snapshot = args.snapshot)
 
 
