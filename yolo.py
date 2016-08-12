@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 import argparse
 import sys
+import cv2
 
 
 def parse_args():
@@ -14,7 +15,9 @@ def parse_args():
 
     parser.add_argument('--imdb', type = str, help = 'image dataset')
     parser.add_argument('--snapshot', dest = 'snapshot', type = str, help = 'load weight from snapshot', default = None)
-
+    parser.add_argument('--mode', type = str, dest = 'mode', help = 'train or test')
+    parser.add_argument('--i', type = str, dest = 'image', help = 'input test image')
+    parser.add_argument('--weights', type = str, dest = 'weights', help = 'weights for testing')
     # test net
 
 
@@ -338,13 +341,9 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
     not_responsible = tf.cast(tf.logical_not(responsible), tf.float32)
     responsible = tf.cast(responsible, tf.float32)
 
-    
-
     # create loss function 
     
     for b in xrange(B):
-
-        # print 'prediction : ', pred.get_shape()
 
         pred_x = tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1])
         gt_x = tf.reshape(tf.slice(y, [0,0], [-1,1]), [-1, 1, 1])
@@ -369,10 +368,10 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
         gt_x, gt_y, gt_w, gt_h = convert_to_one(bbox, n_width, n_height, S)
 
-        dx = tf.pow(tf.sub(pred_x, gt_x), 2)
-        dy = tf.pow(tf.sub(pred_y, gt_y), 2)
-        dw = tf.pow(tf.sub(tf.pow(pred_w,0.5), tf.pow(gt_w,0.5)), 2)
-        dh = tf.pow(tf.sub(tf.pow(pred_h,0.5), tf.pow(gt_h,0.5)), 2)
+        dx = tf.pow(tf.sub(tf.cast(pred_x, tf.float32), tf.cast(gt_x, tf.float32)), 2)
+        dy = tf.pow(tf.sub(tf.cast(pred_y, tf.float32), tf.cast(gt_y,tf.float32)), 2)
+        dw = tf.pow(tf.sub(tf.cast(tf.pow(pred_w,0.5), tf.float32), tf.cast(tf.pow(gt_w,0.5), tf.float32)), 2)
+        dh = tf.pow(tf.sub(tf.cast(tf.pow(pred_h,0.5), tf.float32), tf.cast(tf.pow(gt_h,0.5), tf.float32)), 2)
         dc = tf.pow(tf.sub(pred_c, gt_c), 2)
 
         loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))     
@@ -420,27 +419,15 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     loss = tf.reduce_mean(loss)
 
-    print 'loss shape ', loss.get_shape()
-
-
-
-
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
 
     with tf.Session() as sess:
-        
-        
-        #summary_writer = tf.train.SummaryWriter('logs', sess.graph)
 
         saver = tf.train.Saver()
 
         if snapshot is not None:
 
             saver.restore(sess, snapshot)
-
-            #tf.report_uninitialized_variables(var_list=[weights['conv1']], name='report_uninitialized_variables')
-
-            ##rint tf.is_variable_initialized(weights['conv1'])
 
             print '[*] load from snapshot : {}'.format(snapshot)
 
@@ -454,13 +441,12 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
             sess.run(init)
 
-            step = 920
+            step = 0
 
         print '[*] start training ... '
 
         while step * batch < training_iters:
 
-            #print '[*] step {} '.format(step)
             batch_x = []
             batch_y = []
             start = step * batch % len(images)
@@ -469,76 +455,28 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
             if end < start:
                 batch_x = np.vstack((images[start : ],images[:end]))
                 batch_y = np.vstack((objects[start : ],objects[:end]))
-                _filename = np.vstack((filename[start :], filename[:end]))
+                #_filename = np.vstack((filename[start :], filename[:end]))
             else:
                 batch_x = images[start : end]
                 batch_y = objects[start : end]
-                _filename = filename[start : end]
+                #_filename = filename[start : end]
             
             print " ---------------------------------------"
-            print 'filename : ', _filename
             
             assert batch_y.shape[-1] == int(y.get_shape()[-1]) and len(batch_x) == batch
 
-            print 'y:',batch_y
-            #print 'batch_x:',batch_x
-            _center2, _indicess, _grid_index  = sess.run([center2, indicess, grid_index], feed_dict = {
-                                        x:batch_x,
-                                        y:batch_y})
-
-            print 'center : ', _center2
-            print 'indicess : ', _indicess
-            print 'grid index : ', _grid_index
             sess.run(optimizer, feed_dict = {
                                     x:batch_x,
                                     y:batch_y})
 
-            print 'after optimizer'
-
             if step % display_step == 0:
 
-                
-
-                cost, l_xy, l_wh, l_is, l_no , _center, _confidence,_responsible ,_maximum_IoU,_iou = sess.run([loss,
-                                        tf.reduce_mean(loss_coord_xy),
-                                        tf.reduce_mean(loss_coord_wh),
-                                        tf.reduce_mean(loss_is_obj),
-                                        tf.reduce_mean(loss_no_obj),
-                                        center,
-                                        confidence,
-                                        responsible,
-                                        maximum_IoU,
-                                        iou,
-                                        
-
-                                    ],feed_dict = {
+                cost = sess.run([loss],feed_dict = {
                                         x:batch_x,
                                         y:batch_y})
 
-                
-                #summary_writer.add_summary(cost, step)
-
-                print 'len x ; ', len(batch_x)
-                print 'len y : ', len(batch_y)
-                
                 print "Iter " , str(step * batch) + ", Minibatch Loss = " , cost
-                """
-                print 'gt {}'.format(gt_w)
-                print 'loss xy : ', l_xy
-                print 'loss wh : ', l_wh
-                print 'loss is obj : ', l_is
-                print 'loss no obj : ', l_no
-                print 'center : ', _center[0]
-                print 'confidence : ', _confidence[0]
-                print 'responsible : ', _responsible[0]
-                print 'maximum_IoU : ', _maximum_IoU[0]
-                print 'iou : ', _iou[0]
-                """
-                
-
-                print " ---------------------------------------"
-         
-                
+            
             step += 1
 
         p = save(sess, saver, weights, 'plate', step * batch)
@@ -554,28 +492,120 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 1
+    batch = 64
     display = 1
     dataset = '5000_raw'
-    #dataset = 'char'
+        #dataset = 'char'
     n_width = 448
     n_height = 448
     n_input = n_width * n_height
     cls = ['plate']
-    #cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
+        #cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
 
-    #assert len(cls) == 35
+        #assert len(cls) == 35
 
     B = 2
     S = 7
 
-    learning_rate = 0.1
-    training_iters = 10000
-    train(learning_rate, training_iters, batch, cls, dataset,display = 1, snapshot = args.snapshot)
+    if args.mode == 'train':
+
+        
+        learning_rate = 0.00001
+        training_iters = 30000
+        train(learning_rate, training_iters, batch, cls, dataset,display = 1, snapshot = args.snapshot)
+
+    elif args.mode == 'test':
+
+        x = tf.placeholder(tf.float32, [n_input * 3])
+        image = io.imread(args.image, False)
+        image = cv2.resize(image, (448, 448))
+
+        image = image.flatten()
+        n_class = len(cls)
+        weights = {
+
+            'conv1': tf.Variable(tf.random_uniform([3, 3, 3, 16], minval = -0.5, maxval = 0.5)),
+
+            'conv2': tf.Variable(tf.random_uniform([3, 3, 16, 32], minval = -0.5, maxval = 0.5)),
+
+            'conv3': tf.Variable(tf.random_uniform([3, 3, 32, 64], minval = -0.5, maxval = 0.5)),
+            'conv4': tf.Variable(tf.random_uniform([3, 3, 64, 128], minval = -0.5, maxval = 0.5)),
+            'conv5': tf.Variable(tf.random_uniform([3, 3, 128, 256], minval = -0.5, maxval = 0.5)),
+            'conv6': tf.Variable(tf.random_uniform([3, 3, 256, 512], minval = -0.5, maxval = 0.5)),
+
+            'conv7': tf.Variable(tf.random_uniform([3, 3, 512, 1024], minval = -0.5, maxval = 0.5)),
+            'conv8': tf.Variable(tf.random_uniform([3, 3, 1024, 1024], minval = -0.5, maxval = 0.5)),
+            'conv9': tf.Variable(tf.random_uniform([3, 3, 1024, 1024], minval = -0.5, maxval = 0.5)),
+            
+            'fc1':tf.Variable(tf.random_normal([7 * 7 * 1024, 256])),
+            'fc2':tf.Variable(tf.random_normal([256, 4096])),
+            'fc3':tf.Variable(tf.random_normal([4096, 7 * 7 * (n_class + 5 * B)])),
+     
+        }
+
+        biases = {
+
+            'conv1': tf.Variable(tf.random_normal([16])),
+
+            'conv2': tf.Variable(tf.random_normal([32])),
+
+            'conv3': tf.Variable(tf.random_normal([64])),
+            'conv4': tf.Variable(tf.random_normal([128])),
+            'conv5': tf.Variable(tf.random_normal([256])),
+            'conv6': tf.Variable(tf.random_normal([512])),
+
+            'conv7': tf.Variable(tf.random_normal([1024])),
+            'conv8': tf.Variable(tf.random_normal([1024])),
+            'conv9': tf.Variable(tf.random_normal([1024])),
+            
+            'fc1':tf.Variable(tf.random_normal([256])),
+            'fc2':tf.Variable(tf.random_normal([4096])),
+            'fc3':tf.Variable(tf.random_normal([S * S * (n_class + 5 * B)])),
+
+        }
 
 
 
+        pred = conv_net(x, weights, biases, len(cls), 1)
 
 
 
+        with tf.Session() as sess:
 
+            saver = tf.train.Saver()
+
+            if args.weights is not None:
+
+                saver.restore(sess, args.weights)
+
+                print '[*] load weights from : {}'.format(args.weights)
+
+                # some learning rate modify 
+
+            else:
+
+                print 'required weights for testing ... '
+
+               
+            p = sess.run(pred, feed_dict = {x : image})
+
+            print 'p shape : ', p.shape
+
+
+            for b in xrange(B):
+
+                pred_x = p[:,:,b*5+0]
+                pred_y = p[:,:,b*5+1]
+                pred_w = p[:,:,b*5+2]
+                pred_h = p[:,:,b*5+3]
+               
+                pred_bbox = [pred_x, pred_y, pred_w, pred_h]
+
+                pred_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
+
+               # print 'box : [{}]'.format(sess.run(pred_bbox))
+                print 'x : {}'.format(sess.run(pred_bbox[0]))
+                print 'y : {}'.format(sess.run(pred_bbox[1]))
+                print 'w : {}'.format(sess.run(pred_bbox[2]))
+                print 'h : {}'.format(sess.run(pred_bbox[3]))
+                print '--------------------------------------------------'

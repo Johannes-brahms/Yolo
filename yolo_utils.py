@@ -36,6 +36,11 @@ def convert_to_one(bbox, width, height, S):
 
     x, y, w, h = bbox
 
+    x = tf.cast(x, tf.float32)
+    y = tf.cast(y, tf.float32)
+    w = tf.cast(w, tf.float32)
+    h = tf.cast(h, tf.float32)
+    
     center_x = tf.mul(tf.add(x, w), 0.5)
     center_y = tf.mul(tf.add(y, h), 0.5)
 
@@ -76,15 +81,15 @@ def convert_to_reality(bbox, width, height, S):
     cell_coord_y = tf.div(index, S)
     cell_coord_x = tf.mod(index, S)
 
-    real_x = tf.add(tf.reshape(tf.mul(cell_coord_x, cell_w), [-1]), tf.cast(tf.mul(relative_center_x, cell_w), tf.int32))
-    real_y = tf.add(tf.reshape(tf.mul(cell_coord_y, cell_h), [-1]), tf.cast(tf.mul(relative_center_y, cell_h), tf.int32))
+    real_x_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_x, cell_w), [-1]), tf.cast(tf.mul(relative_center_x, cell_w), tf.int32)), tf.cast(tf.mul(tf.cast(w, tf.float32), 0.5), tf.int32))
+    real_y_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_y, cell_h), [-1]), tf.cast(tf.mul(relative_center_y, cell_h), tf.int32)), tf.cast(tf.mul(tf.cast(h, tf.float32), 0.5), tf.int32))
 
 
-    assert real_x.dtype == tf.int32 and \
-            real_y.dtype == tf.int32 and \
+    assert real_x_left_up.dtype == tf.int32 and \
+           real_y_left_up.dtype == tf.int32 and \
             w.dtype == tf.int32 and \
             h.dtype == tf.int32
 
-    bbox = [real_x, real_y, w, h]
+    bbox = [real_x_left_up, real_y_left_up, w, h]
 
     return bbox
