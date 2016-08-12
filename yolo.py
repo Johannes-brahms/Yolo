@@ -419,7 +419,7 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     loss = tf.reduce_mean(loss)
 
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+    optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     with tf.Session() as sess:
 
@@ -471,12 +471,21 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
             if step % display_step == 0:
 
-                cost = sess.run([loss],feed_dict = {
+                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj = sess.run([loss, 
+                    tf.reduce_mean(loss_coord_xy), 
+                    tf.reduce_mean(loss_coord_wh), 
+                    tf.reduce_mean(loss_is_obj),
+                    tf.reduce_mean(loss_no_obj)],feed_dict = {
                                         x:batch_x,
                                         y:batch_y})
 
                 print "Iter " , str(step * batch) + ", Minibatch Loss = " , cost
-            
+
+                print 'Coord xy : ', _loss_coord_xy
+                print 'Coord wh : ', _loss_coord_wh
+                print 'is obj : ', _loss_is_obj
+                print 'not obj : ', _loss_no_obj
+
             step += 1
 
         p = save(sess, saver, weights, 'plate', step * batch)
@@ -494,13 +503,13 @@ if __name__ == '__main__':
 
     batch = 64
     display = 1
-    dataset = '5000_raw'
-        #dataset = 'char'
+    #dataset = '5000_raw'
+    dataset = 'char'
     n_width = 448
     n_height = 448
     n_input = n_width * n_height
-    cls = ['plate']
-        #cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
+    #cls = ['plate']
+    cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
 
         #assert len(cls) == 35
 
@@ -510,7 +519,7 @@ if __name__ == '__main__':
     if args.mode == 'train':
 
         
-        learning_rate = 0.00001
+        learning_rate = 0.1
         training_iters = 30000
         train(learning_rate, training_iters, batch, cls, dataset,display = 1, snapshot = args.snapshot)
 

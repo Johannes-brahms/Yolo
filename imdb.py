@@ -16,15 +16,15 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 """
 
-def merge_roidbs(filename, datum, ratio):
+def merge_roidbs(filename, datum, ratio, original):
 
-    path = Path('Annotations', 'xmls', filename + '.xml')
+    path = Path('Annotations', 'xml', filename + '.xml')
 
     xml = ET.parse(path)
 
-    #print 'filename : ', filename
-
     w_ratio, h_ratio = ratio
+
+    print 'Filename : ', filename
 
     objects = xml.findall('object')
 
@@ -34,20 +34,24 @@ def merge_roidbs(filename, datum, ratio):
 
         # Make pixel indexes 0-based
 
-        xmin = float(bbox.find('xmin').text) / w_ratio #/ datum.width# - 1
-        ymin = float(bbox.find('ymin').text) / h_ratio #/ datum.height# - 1
-        xmax = float(bbox.find('xmax').text) / w_ratio #/ datum.width# - 1
-        ymax = float(bbox.find('ymax').text) / h_ratio #/ datum.height# - 1
+        xmin = float(bbox.find('xmin').text)  #/ datum.width# - 1
+        ymin = float(bbox.find('ymin').text)  #/ datum.height# - 1
+        xmax = float(bbox.find('xmax').text)   #/ datum.width# - 1
+        ymax = float(bbox.find('ymax').text)   #/ datum.height# - 1
+
+        print 'original w : {}, h : {}'.format(original[1], original[0]) 
+        print 'xmax : {}, ymax : {}'.format(xmax, ymax)
+
+        assert xmax <= original[1] and ymax <= original[0]
+
+        xmin /= w_ratio #/ datum.width# - 1
+        ymin /= h_ratio #/ datum.height# - 1
+        xmax /= w_ratio #/ datum.width# - 1
+        ymax /= h_ratio 
 
         cls = obj.find('name').text
 
-        #print 'class :', cls
 
-        #print 'class : {}, xmin : {}, ymix : {}, xmax : {}, ymax : {}'.format(cls, xmin, ymin, xmax, ymax)
-
-        #obj.append((cls, xmin, ymin, xmax, ymax))
-
-        
         o = datum.object.add()
         o.x = int(xmin)
         o.y = int(ymin)
@@ -62,12 +66,14 @@ def merge_roidbs(filename, datum, ratio):
         except:
             print '=================='
             print 'filename : ', filename
-            print 'original x min : {} , y min : {}, x max : {}, y max : {} '.format(float(bbox.find('xmin').text)
-            , float(bbox.find('ymin').text), float(bbox.find('xmax').text), float(bbox.find('ymin').text))
+            """
+            print 'original x min : {} , y min : {}, x max : {}, y max : {} '.format(float(bbox.find('xmin').text),float(bbox.find('ymin').text)
+            , original_width, original_height)
 
 
-            print 'resize x min : {} , y min : {}, x max : {}, y max : {} '.format(xmin, ymin, xmax, ymax)
+            print 'resize x min : {} , y min : {}, x max : {}, y max : {} '.format(xmin, ymin, new_width, new_height)
             print '=================='
+            """
             raise
           
 
@@ -99,8 +105,11 @@ def generate_caches_with_raw(database, lists):
 
                 image_name = image_name.strip('\n')
                 image = io.imread(Path('Images', image_name + '.jpg'), False)
+                print 'image shape : ', image.shape
                 w_ratio = float(image.shape[1]) / 448
                 h_ratio = float(image.shape[0]) / 448
+
+                original = image.shape
 
                 # resize image to 448 x 448
                 image = cv2.resize(image, (448, 448))
@@ -113,7 +122,7 @@ def generate_caches_with_raw(database, lists):
                 datum.width = image.shape[1]
                 datum.filename = image_name.encode()
 
-                datum = merge_roidbs(image_name, datum, [w_ratio, h_ratio])
+                datum = merge_roidbs(image_name, datum, [w_ratio, h_ratio], original)
                 # write to database
                 txn.put(str(num), datum.SerializeToString())
 
@@ -347,7 +356,7 @@ def parallel(database, cores, cls_name):
 
 if __name__ == '__main__':
 
-    generate_caches_with_raw('5000_raw', '5000.txt')
-
+    generate_caches_with_raw('char', 'Images/train.txt')
+    #generate_caches_with_raw('plate_db', '5000.txt')
 #load_imdb_from_jpg('plate',['plate'])
 #load_imdb_from_raw('5000_raw',['plate'])
