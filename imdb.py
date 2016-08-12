@@ -18,7 +18,7 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 def merge_roidbs(filename, datum, ratio):
 
-    path = Path('Annotations', 'xml', filename + '.xml')
+    path = Path('Annotations', 'xmls', filename + '.xml')
 
     xml = ET.parse(path)
 
@@ -120,11 +120,11 @@ def load_imdb_from_raw(database, cls_name):
             raw = txn.get(str(num))
             if type(raw) is not str:
                 break
+
             datum = yolo_pb2.Image_raw()
             datum.ParseFromString(raw)
 
-            image = np.fromstring(datum.data, dtype=np.uint8)
-           
+            image = np.fromstring(datum.data, dtype=np.uint8)          
             image = image.reshape((datum.height,  datum.width,  datum.channels))
 
             for idx in xrange(datum.object_num):
@@ -133,6 +133,9 @@ def load_imdb_from_raw(database, cls_name):
                 y = datum.object[idx].y         #/ h_ratio / height
                 w = datum.object[idx].width     #/ w_ratio / width
                 h = datum.object[idx].height    #/ h_ratio / height
+
+                print ' x : ', x
+                print ' w : ', w
                 cls = datum.object[idx].cls
                 gt_cls = get_index_by_name(cls, cls_name)
 
@@ -142,7 +145,7 @@ def load_imdb_from_raw(database, cls_name):
                     objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls))))#, object_center))))
 
                 images.append(image.flatten())
-                print type(image.flatten())
+                # print type(image.flatten())
                 # print 'load Images : {}'.format(num)
 
             num += 1
@@ -326,7 +329,7 @@ def parallel(database, cores, cls_name):
 
 if __name__ == '__main__':
 
-    generate_caches_with_raw('char', 'Images/train.txt')
+    generate_caches_with_raw('5000_raw', '5000.txt')
 
 #load_imdb_from_jpg('plate',['plate'])
 #load_imdb_from_raw('5000_raw',['plate'])
