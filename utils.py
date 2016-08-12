@@ -14,19 +14,20 @@ def IoU(bbox,gt):
     x2 = tf.maximum(tf.cast(bbox[2], tf.float32), tf.reshape(gt[:,2], shape))
     y2 = tf.maximum(tf.cast(bbox[3], tf.float32), tf.reshape(gt[:,3], shape))
 
-    w = tf.add(tf.sub(x2,x1),1)
-    h = tf.add(tf.sub(y2,y1),1)
+    w = tf.sub(x2,x1)
+    h = tf.sub(y2,y1)
 
-    inter = tf.mul(w,h)
+    inter = tf.cast(tf.mul(w,h), tf.float32)
 
     bounding_box = tf.cast(tf.mul(tf.add(tf.sub(bbox[2], bbox[0]), 1), tf.add(tf.sub(bbox[3],bbox[1]),1)), tf.float32)
-    ground_truth = tf.mul(tf.add(tf.sub(gt[:,2], gt[:,0]), 1), tf.add(tf.sub(gt[:,3],gt[:,1]),1))
-
-    #tmp1 = tf.add(bounding_box,tf.reshape(ground_truth,shape))
-    #print 'tmp1 : ', tmp1.get_shape()
-
-    #print 'sub : ',tf.sub(tf.add(bounding_box,ground_truth),inter).get_shape()
+    ground_truth = tf.cast(tf.mul(tf.add(tf.sub(gt[:,2], gt[:,0]), 1), tf.add(tf.sub(gt[:,3],gt[:,1]),1)), tf.float32)
 
     iou = tf.div(inter,tf.sub(tf.add(bounding_box,tf.reshape(ground_truth,shape)),inter))
 
+    mask_less = tf.cast(tf.logical_not(tf.less(iou, tf.zeros_like(iou))), tf.float32)
+    mask_great = tf.cast(tf.logical_not(tf.greater(iou, tf.ones_like(iou))), tf.float32)
+    iou = tf.mul(tf.mul(iou, mask_less), mask_great) 
+    
+    
+    print iou.get_shape()
     return iou

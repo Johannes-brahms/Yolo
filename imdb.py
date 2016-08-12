@@ -22,6 +22,8 @@ def merge_roidbs(filename, datum, ratio):
 
     xml = ET.parse(path)
 
+    #print 'filename : ', filename
+
     w_ratio, h_ratio = ratio
 
     objects = xml.findall('object')
@@ -37,29 +39,44 @@ def merge_roidbs(filename, datum, ratio):
         xmax = float(bbox.find('xmax').text) / w_ratio #/ datum.width# - 1
         ymax = float(bbox.find('ymax').text) / h_ratio #/ datum.height# - 1
 
-        print 'xmin :', xmin
-
-
         cls = obj.find('name').text
 
-        print 'class :', cls
+        #print 'class :', cls
 
         #print 'class : {}, xmin : {}, ymix : {}, xmax : {}, ymax : {}'.format(cls, xmin, ymin, xmax, ymax)
 
         #obj.append((cls, xmin, ymin, xmax, ymax))
 
+        
         o = datum.object.add()
         o.x = int(xmin)
         o.y = int(ymin)
+
         o.width = int(xmax - xmin)
         o.height = int(ymax - ymin)
 
-        print o.x
+        try :
+
+            assert o.x + o.width <= 448 and o.y + o.height <= 448
+
+        except:
+            print '=================='
+            print 'filename : ', filename
+            print 'original x min : {} , y min : {}, x max : {}, y max : {} '.format(float(bbox.find('xmin').text)
+            , float(bbox.find('ymin').text), float(bbox.find('xmax').text), float(bbox.find('ymin').text))
+
+
+            print 'resize x min : {} , y min : {}, x max : {}, y max : {} '.format(xmin, ymin, xmax, ymax)
+            print '=================='
+            raise
+          
+
         o.cls = cls
 
     assert len(objects) > 0
 
     datum.object_num = len(objects)
+
     return datum
 def get_index_by_name(cls, cls_name):
     #print 'class ', cls
@@ -94,9 +111,9 @@ def generate_caches_with_raw(database, lists):
                 datum.channels = image.shape[2]
                 datum.height = image.shape[0]
                 datum.width = image.shape[1]
+                datum.filename = image_name.encode()
 
                 datum = merge_roidbs(image_name, datum, [w_ratio, h_ratio])
-
                 # write to database
                 txn.put(str(num), datum.SerializeToString())
 
@@ -114,6 +131,7 @@ def load_imdb_from_raw(database, cls_name):
     print '\n\n[*] loading database .... '
     objects = None
     images = []
+    filename = []
     num = 0
     with env.begin() as txn:
         while True:
@@ -134,8 +152,7 @@ def load_imdb_from_raw(database, cls_name):
                 w = datum.object[idx].width     #/ w_ratio / width
                 h = datum.object[idx].height    #/ h_ratio / height
 
-                print ' x : ', x
-                print ' w : ', w
+
                 cls = datum.object[idx].cls
                 gt_cls = get_index_by_name(cls, cls_name)
 
@@ -145,6 +162,7 @@ def load_imdb_from_raw(database, cls_name):
                     objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls))))#, object_center))))
 
                 images.append(image.flatten())
+                filename.append(datum.filename)
                 # print type(image.flatten())
                 # print 'load Images : {}'.format(num)
 
@@ -158,7 +176,7 @@ def load_imdb_from_raw(database, cls_name):
 
     #print images.dtype
     #print images.shape
-    return images, objects
+    return images, objects, filename
 
 
 def generate_caches_with_jpg(database, lists):

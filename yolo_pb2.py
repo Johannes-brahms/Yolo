@@ -18,7 +18,7 @@ _sym_db = _symbol_database.Default()
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='yolo.proto',
   package='yolo',
-  serialized_pb=_b('\n\nyolo.proto\x12\x04yolo\"\xd2\x01\n\tImage_jpg\x12\x0c\n\x04\x64\x61ta\x18\x01 \x02(\t\x12\x10\n\x08\x63hannels\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12&\n\x06object\x18\x05 \x03(\x0b\x32\x16.yolo.Image_jpg.Object\x12\x12\n\nobject_num\x18\x06 \x02(\x05\x1aJ\n\x06Object\x12\t\n\x01x\x18\x01 \x02(\x05\x12\t\n\x01y\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12\x0b\n\x03\x63ls\x18\x05 \x02(\t\"\xd2\x01\n\tImage_raw\x12\x0c\n\x04\x64\x61ta\x18\x01 \x02(\x0c\x12\x10\n\x08\x63hannels\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12&\n\x06object\x18\x05 \x03(\x0b\x32\x16.yolo.Image_raw.Object\x12\x12\n\nobject_num\x18\x06 \x02(\x05\x1aJ\n\x06Object\x12\t\n\x01x\x18\x01 \x02(\x05\x12\t\n\x01y\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12\x0b\n\x03\x63ls\x18\x05 \x02(\t')
+  serialized_pb=_b('\n\nyolo.proto\x12\x04yolo\"\xd2\x01\n\tImage_jpg\x12\x0c\n\x04\x64\x61ta\x18\x01 \x02(\t\x12\x10\n\x08\x63hannels\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12&\n\x06object\x18\x05 \x03(\x0b\x32\x16.yolo.Image_jpg.Object\x12\x12\n\nobject_num\x18\x06 \x02(\x05\x1aJ\n\x06Object\x12\t\n\x01x\x18\x01 \x02(\x05\x12\t\n\x01y\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12\x0b\n\x03\x63ls\x18\x05 \x02(\t\"\xe4\x01\n\tImage_raw\x12\x0c\n\x04\x64\x61ta\x18\x01 \x02(\x0c\x12\x10\n\x08\x66ilename\x18\x02 \x02(\t\x12\x10\n\x08\x63hannels\x18\x03 \x02(\x05\x12\r\n\x05width\x18\x04 \x02(\x05\x12\x0e\n\x06height\x18\x05 \x02(\x05\x12&\n\x06object\x18\x06 \x03(\x0b\x32\x16.yolo.Image_raw.Object\x12\x12\n\nobject_num\x18\x07 \x02(\x05\x1aJ\n\x06Object\x12\t\n\x01x\x18\x01 \x02(\x05\x12\t\n\x01y\x18\x02 \x02(\x05\x12\r\n\x05width\x18\x03 \x02(\x05\x12\x0e\n\x06height\x18\x04 \x02(\x05\x12\x0b\n\x03\x63ls\x18\x05 \x02(\t')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -219,36 +219,43 @@ _IMAGE_RAW = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='channels', full_name='yolo.Image_raw.channels', index=1,
-      number=2, type=5, cpp_type=1, label=2,
-      has_default_value=False, default_value=0,
+      name='filename', full_name='yolo.Image_raw.filename', index=1,
+      number=2, type=9, cpp_type=9, label=2,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='width', full_name='yolo.Image_raw.width', index=2,
+      name='channels', full_name='yolo.Image_raw.channels', index=2,
       number=3, type=5, cpp_type=1, label=2,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='height', full_name='yolo.Image_raw.height', index=3,
+      name='width', full_name='yolo.Image_raw.width', index=3,
       number=4, type=5, cpp_type=1, label=2,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='object', full_name='yolo.Image_raw.object', index=4,
-      number=5, type=11, cpp_type=10, label=3,
+      name='height', full_name='yolo.Image_raw.height', index=4,
+      number=5, type=5, cpp_type=1, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='object', full_name='yolo.Image_raw.object', index=5,
+      number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='object_num', full_name='yolo.Image_raw.object_num', index=5,
-      number=6, type=5, cpp_type=1, label=2,
+      name='object_num', full_name='yolo.Image_raw.object_num', index=6,
+      number=7, type=5, cpp_type=1, label=2,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -265,7 +272,7 @@ _IMAGE_RAW = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=234,
-  serialized_end=444,
+  serialized_end=462,
 )
 
 _IMAGE_JPG_OBJECT.containing_type = _IMAGE_JPG
