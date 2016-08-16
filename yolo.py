@@ -229,7 +229,9 @@ def Responsible(center, confidence):
 
     """
 
-    iou = tf.mul(center, confidence)
+    #iou = tf.mul(center, confidence)
+
+    iou = confidence
 
     # find out maximum IoU
 
@@ -241,14 +243,14 @@ def Responsible(center, confidence):
 
     for b in xrange(B - 2):
 
-        _iou = tf.concat(2, [_iou maximum_IoU])
+        _iou = tf.concat(2, [_iou, maximum_IoU])
 
     maximum_IoU = _iou
 
     # return the bool type tensor 
 
     res = tf.logical_and(tf.greater(iou, 0),tf.greater_equal(iou, maximum_IoU))
-    #res = tf.greater_equal(iou, maximum_IoU)
+
     return res, maximum_IoU, iou
 
 def Appear(confidence, batch):
@@ -284,18 +286,18 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     weights = {
 
-        'conv1': tf.Variable(tf.random_uniform([3, 3, 3, 16], minval = -0.5, maxval = 0.5)),
+        'conv1': tf.Variable(tf.random_normal([3, 3, 3, 16])),
 
-        'conv2': tf.Variable(tf.random_uniform([3, 3, 16, 32], minval = -0.5, maxval = 0.5)),
+        'conv2': tf.Variable(tf.random_normal([3, 3, 16, 32])),
 
-        'conv3': tf.Variable(tf.random_uniform([3, 3, 32, 64], minval = -0.5, maxval = 0.5)),
-        'conv4': tf.Variable(tf.random_uniform([3, 3, 64, 128], minval = -0.5, maxval = 0.5)),
-        'conv5': tf.Variable(tf.random_uniform([3, 3, 128, 256], minval = -0.5, maxval = 0.5)),
-        'conv6': tf.Variable(tf.random_uniform([3, 3, 256, 512], minval = -0.5, maxval = 0.5)),
+        'conv3': tf.Variable(tf.random_normal([3, 3, 32, 64])),
+        'conv4': tf.Variable(tf.random_normal([3, 3, 64, 128])),
+        'conv5': tf.Variable(tf.random_normal([3, 3, 128, 256])),
+        'conv6': tf.Variable(tf.random_normal([3, 3, 256, 512])),
 
-        'conv7': tf.Variable(tf.random_uniform([3, 3, 512, 1024], minval = -0.5, maxval = 0.5)),
-        'conv8': tf.Variable(tf.random_uniform([3, 3, 1024, 1024], minval = -0.5, maxval = 0.5)),
-        'conv9': tf.Variable(tf.random_uniform([3, 3, 1024, 1024], minval = -0.5, maxval = 0.5)),
+        'conv7': tf.Variable(tf.random_normal([3, 3, 512, 1024])),
+        'conv8': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
+        'conv9': tf.Variable(tf.random_normal([3, 3, 1024, 1024])),
         
         'fc1':tf.Variable(tf.random_normal([7 * 7 * 1024, 256])),
         'fc2':tf.Variable(tf.random_normal([256, 4096])),
@@ -333,7 +335,7 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     confidence, ppp = Confidence(pred, y)
     center = Center(y, batch)
-    center2, indicess, grid_index = Center2(y, batch)
+    #center2, indicess, grid_index = Center2(y, batch)
     responsible, maximum_IoU, iou = Responsible(center, confidence)
     appear = tf.cast(Appear(confidence, batch), tf.float32)
 
@@ -343,6 +345,7 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     # create loss function 
     
+    gt_x = None
     for b in xrange(B):
 
         pred_x = tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1])
@@ -405,10 +408,11 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
 
-    appear = tf.reshape(appear, [-1, S * S, 1])
+    gt_cls = tf.reshape(tf.reduce_sum(gt_cls, 2), [-1, S * S, 1])
 
-    gt_cls = tf.mul(appear, gt_cls)
- 
+    gt_cls = tf.mul(tf.slice(center,[0,0,0],[-1,-1,1]), gt_cls)
+    
+    print 'gt class : ', gt_cls.get_shape()
     loss = tf.concat(2, [loss, gt_cls])
 
     assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
@@ -461,8 +465,6 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
             
             print " ---------------------------------------"
 
-            #print batch_y
-            
             assert batch_y.shape[-1] == int(y.get_shape()[-1]) and len(batch_x) == batch
 
             sess.run(optimizer, feed_dict = {
@@ -471,18 +473,21 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
             if step % display_step == 0:
 
-                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj, _confidence, _gt_cls = sess.run([tf.reduce_mean(loss), 
+                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj, _confidence, _gt_cls, _gt_x = sess.run([loss, 
                     
                     tf.reduce_mean(loss_coord_xy), 
                     tf.reduce_mean(loss_coord_wh), 
                     tf.reduce_mean(loss_is_obj),
                     tf.reduce_mean(loss_no_obj),
                     tf.reduce_mean(gt_cls),
-                    confidence],feed_dict = {
+                    confidence,
+                    gt_x],feed_dict = {
                                         x:batch_x,
                                         y:batch_y})
 
-                print "Iter " , str(step) + ", Minibatch Loss = " , cost
+
+
+                print "Iter " , str(step) + " , Minibatch Loss = " , cost, " , Learning rate : ", learning_rate
 
                 #print 'Coord xy : ', _loss_coord_xy
                 #print 'Coord wh : ', _loss_coord_wh
@@ -491,8 +496,15 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
                 #print 'class : ', _gt_cls
                 #print 'confidence : ', _confidence[0]
                 #print 'confidence shape : ', _confidence.shape
+                #print 'input : ', batch_x[0]
+                #print 'target : ',batch_y[0]
+                print 'prediction : ', _gt_x
 
             step += 1
+
+            if step % 100 == 0:
+
+                learning_rate *= 0.8 ** (step / 100)
 
         p = save(sess, saver, weights, 'plate', step * batch)
 
@@ -519,7 +531,7 @@ if __name__ == '__main__':
 
         #assert len(cls) == 35
 
-    B = 2
+    B = 1
     S = 7
 
     if args.mode == 'train':
