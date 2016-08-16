@@ -18,7 +18,7 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 def merge_roidbs(filename, datum, ratio, original):
 
-    path = Path('Annotations', 'xml', filename + '.xml')
+    path = Path('Annotations', 'xmls', filename + '.xml')
 
     xml = ET.parse(path)
 
@@ -356,7 +356,7 @@ def parallel(database, cores, cls_name):
 
 if __name__ == '__main__':
 
-    generate_caches_with_raw('char', 'Images/train.txt')
+    generate_caches_with_raw('plate_300', '5000.txt')
     #generate_caches_with_raw('plate_db', '5000.txt')
 #load_imdb_from_jpg('plate',['plate'])
 #load_imdb_from_raw('5000_raw',['plate'])

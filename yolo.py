@@ -237,13 +237,13 @@ def Responsible(center, confidence):
 
     # Create a same shape of tensor as iou 
 
-    temp = tf.concat(2, [maximum_IoU, maximum_IoU])
+    _iou = tf.concat(2, [maximum_IoU, maximum_IoU])
 
     for b in xrange(B - 2):
 
-        temp = tf.concat(2, [temp, maximum_IoU])
+        _iou = tf.concat(2, [_iou maximum_IoU])
 
-    maximum_IoU = temp
+    maximum_IoU = _iou
 
     # return the bool type tensor 
 
@@ -374,24 +374,21 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
         dh = tf.pow(tf.sub(tf.cast(tf.pow(pred_h,0.5), tf.float32), tf.cast(tf.pow(gt_h,0.5), tf.float32)), 2)
         dc = tf.pow(tf.sub(pred_c, gt_c), 2)
 
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dx,dy))     
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.add(dw,dh))
+        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.concat(2, [dx,dy]))     
+        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0,0,b],[-1,-1,1])), tf.concat(2, [dw,dh]))
         loss_is_obj = tf.mul(tf.slice(responsible,[0,0,b],[-1,-1,1]),dc)
         loss_no_obj = tf.mul(tf.mul(tf.slice(not_responsible,[0,0,b],[-1,-1,1]),dc), lnoobj)
 
+        _loss = tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])
+
+
         if loss == None:
 
-            # print 'is None loss : ', loss_coord_wh.get_shape()
-
-            loss = tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj))
+            loss = _loss
 
         else:
 
-            # print 'is loss : ' ,loss_coord_wh.get_shape()
-
-            loss = tf.add(loss, tf.add(tf.add(loss_coord_xy,loss_coord_wh), tf.add(loss_is_obj,loss_no_obj)))
-
-            # print 'is loss is loss : ' ,loss.get_shape()
+            loss = tf.concat(2, [loss, _loss])
 
         index = b + 1
 
@@ -400,7 +397,7 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     """
 
-    loss = tf.reshape(tf.reduce_sum(loss,1), [-1])
+    print 'loss shape before reduce : ', loss.get_shape()
 
     y_cls = tf.reshape(tf.slice(pred, [0,0,5 * index], [-1,-1,-1]),[-1, S * S, n_class])
 
@@ -408,18 +405,19 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     gt_cls = tf.pow(tf.sub(y_cls, pred_cls), 2)
 
-    is_appear = tf.reshape(appear, [-1, S * S, 1])
-    gt_cls = tf.mul(is_appear, gt_cls)
-    gt_cls = tf.reduce_sum(gt_cls,1)
-    gt_cls = tf.reduce_sum(gt_cls,1)
+    appear = tf.reshape(appear, [-1, S * S, 1])
+
+    gt_cls = tf.mul(appear, gt_cls)
  
-    loss = tf.add(loss, gt_cls)
+    loss = tf.concat(2, [loss, gt_cls])
 
     assert int(tf.slice(y,[0,4],[-1,-1]).get_shape()[1]) == n_class
 
-    loss = tf.reduce_mean(loss)
+    loss = tf.reduce_mean(loss, 0)
 
-    optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+    print 'end loss shape : ', loss.get_shape()
+
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
 
     with tf.Session() as sess:
 
@@ -445,7 +443,7 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
         print '[*] start training ... '
 
-        while step * batch < training_iters:
+        while step < training_iters:
 
             batch_x = []
             batch_y = []
@@ -462,6 +460,8 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
                 #_filename = filename[start : end]
             
             print " ---------------------------------------"
+
+            #print batch_y
             
             assert batch_y.shape[-1] == int(y.get_shape()[-1]) and len(batch_x) == batch
 
@@ -471,21 +471,26 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
             if step % display_step == 0:
 
-                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj = sess.run([loss, 
+                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj, _confidence, _gt_cls = sess.run([tf.reduce_mean(loss), 
                     
                     tf.reduce_mean(loss_coord_xy), 
                     tf.reduce_mean(loss_coord_wh), 
                     tf.reduce_mean(loss_is_obj),
-                    tf.reduce_mean(loss_no_obj)],feed_dict = {
+                    tf.reduce_mean(loss_no_obj),
+                    tf.reduce_mean(gt_cls),
+                    confidence],feed_dict = {
                                         x:batch_x,
                                         y:batch_y})
 
-                print "Iter " , str(step * batch) + ", Minibatch Loss = " , cost
+                print "Iter " , str(step) + ", Minibatch Loss = " , cost
 
-                print 'Coord xy : ', _loss_coord_xy
-                print 'Coord wh : ', _loss_coord_wh
-                print 'is obj : ', _loss_is_obj
-                print 'not obj : ', _loss_no_obj
+                #print 'Coord xy : ', _loss_coord_xy
+                #print 'Coord wh : ', _loss_coord_wh
+                #print 'is obj : ', _loss_is_obj
+                #print 'not obj : ', _loss_no_obj
+                #print 'class : ', _gt_cls
+                #print 'confidence : ', _confidence[0]
+                #print 'confidence shape : ', _confidence.shape
 
             step += 1
 
@@ -502,15 +507,15 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 5
+    batch = 64
     display = 1
-    #dataset = '5000_raw'
-    dataset = 'char'
+    dataset = 'plate_300'
+    #dataset = 'char'
     n_width = 448
     n_height = 448
     n_input = n_width * n_height
-    #cls = ['plate']
-    cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
+    cls = ['plate']
+    #cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
 
         #assert len(cls) == 35
 
@@ -520,9 +525,9 @@ if __name__ == '__main__':
     if args.mode == 'train':
 
         
-        learning_rate = 0.1
-        training_iters = 30000
-        train(learning_rate, training_iters, batch, cls, dataset,display = 1, snapshot = args.snapshot)
+        learning_rate = 0.001
+        training_iters = 1000
+        train(learning_rate, training_iters, batch, cls, dataset, display = 1, snapshot = args.snapshot)
 
     elif args.mode == 'test':
 
@@ -596,10 +601,12 @@ if __name__ == '__main__':
 
                 print 'required weights for testing ... '
 
+                raise
+
                
             p = sess.run(pred, feed_dict = {x : image})
 
-            print 'p shape : ', p.shape
+            #print 'p shape : ', p.shape
 
 
             for b in xrange(B):
