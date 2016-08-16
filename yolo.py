@@ -128,7 +128,7 @@ def Confidence(pred, y):
 
     assert confidence.dtype == tf.float32
 
-    return confidence, pred_bbox[0]
+    return confidence
 
 def Center(groundtruth, batch):
 
@@ -176,37 +176,7 @@ def Center(groundtruth, batch):
             c = tf.concat(2, [c, center_sparse])
 
     return c
-def Center2(groundtruth, batch):
 
-    """
-
-    check which cell is the center of the object located
-
-
-    """
-
-    c = None
-
-    for b in xrange(1):
-
-        # grid cell index tensor shape : [ batch , cells , one of bboxes ]
-        # find out which grid cell is the bbox center located in
-
-        grid_cell_index = tf.cast(tf.reshape(cell_locate((448,448), groundtruth, S), [-1]), tf.int32)
-
-        # generate index for terrible tensorflow slicing tensor
-
-        index = tf.range(0, batch)
-
-        # pack index with grid cell index 
-
-        indices = tf.cast(tf.pack([index, grid_cell_index], axis = 1), tf.int64)
-
-
-        # set the " center variable " to one ( which is boolean type ), in terms of grid cell index  
-        temp = tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])
-
-    return temp, indices, grid_cell_index
 def Responsible(center, confidence):
 
     """
@@ -333,9 +303,9 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
     pred = conv_net(x, weights, biases, n_class, 1)
 
-    confidence, ppp = Confidence(pred, y)
+    confidence = Confidence(pred, y)
     center = Center(y, batch)
-    #center2, indicess, grid_index = Center2(y, batch)
+   
     responsible, maximum_IoU, iou = Responsible(center, confidence)
     appear = tf.cast(Appear(confidence, batch), tf.float32)
 
@@ -346,6 +316,8 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
     # create loss function 
     
     gt_x = None
+    pred_x = None
+
     for b in xrange(B):
 
         pred_x = tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1])
@@ -473,21 +445,22 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
             if step % display_step == 0:
 
-                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj, _confidence, _gt_cls, _gt_x = sess.run([loss, 
-                    
+                cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj, _confidence, _gt_cls, _gt_x, _pred_x = sess.run([
+                    tf.reduce_mean(loss), 
                     tf.reduce_mean(loss_coord_xy), 
                     tf.reduce_mean(loss_coord_wh), 
                     tf.reduce_mean(loss_is_obj),
                     tf.reduce_mean(loss_no_obj),
                     tf.reduce_mean(gt_cls),
                     confidence,
-                    gt_x],feed_dict = {
+                    gt_x,
+                    pred_x],feed_dict = {
                                         x:batch_x,
                                         y:batch_y})
 
 
 
-                print "Iter " , str(step) + " , Minibatch Loss = " , cost, " , Learning rate : ", learning_rate
+                print "Iter " , str(step) + " , Minibatch Loss = " , cost #" , Learning rate : ", learning_rate
 
                 #print 'Coord xy : ', _loss_coord_xy
                 #print 'Coord wh : ', _loss_coord_wh
@@ -498,7 +471,9 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
                 #print 'confidence shape : ', _confidence.shape
                 #print 'input : ', batch_x[0]
                 #print 'target : ',batch_y[0]
-                print 'prediction : ', _gt_x
+                #print 'prediction : ', _pred_x[0]
+
+                #print 'groud truth : ', _gt_x[0]
 
             step += 1
 
@@ -519,15 +494,15 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 64
+    batch = 5
     display = 1
-    dataset = 'plate_300'
-    #dataset = 'char'
+    #dataset = '5000_raw'
+    dataset = 'char'
     n_width = 448
     n_height = 448
     n_input = n_width * n_height
-    cls = ['plate']
-    #cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
+    #cls = ['plate']
+    cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
 
         #assert len(cls) == 35
 

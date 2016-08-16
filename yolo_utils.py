@@ -40,21 +40,23 @@ def convert_to_one(bbox, width, height, S):
     y = tf.cast(y, tf.float32)
     w = tf.cast(w, tf.float32)
     h = tf.cast(h, tf.float32)
-    
-    center_x = tf.mul(tf.add(x, w), 0.5)
-    center_y = tf.mul(tf.add(y, h), 0.5)
+
+    global_center_x = tf.mul(tf.add(tf.mul(x, 2), w), 0.5)
+    global_center_y = tf.mul(tf.add(tf.mul(y, 2), h), 0.5)
 
     w = tf.div(w, width)
     h = tf.div(h, height)
 
-    cell_w = width / S
-    cell_h = height / S
+    cell_w = tf.cast(tf.div(tf.cast(width, tf.int32), S), tf.float32)
+    cell_h = tf.cast(tf.div(tf.cast(height, tf.int32), S), tf.float32)
 
-    cell_coord_x = tf.div(center_x, cell_w)
-    cell_coord_y = tf.div(center_y, cell_h)
 
-    offset_x = tf.div(tf.sub(center_x, tf.mul(cell_coord_x, cell_w)), cell_w)
-    offset_y = tf.div(tf.sub(center_y, tf.mul(cell_coord_y, cell_h)), cell_h)
+    cell_coord_x = tf.cast(tf.cast(tf.div(global_center_x, cell_w), tf.int32), tf.float32)
+    cell_coord_y = tf.cast(tf.cast(tf.div(global_center_y, cell_h), tf.int32), tf.float32)
+
+    offset_x = tf.div(tf.sub(global_center_x, tf.mul(cell_coord_x, cell_w)), cell_w)
+    offset_y = tf.div(tf.sub(global_center_y, tf.mul(cell_coord_y, cell_h)), cell_h)
+
 
     assert offset_x.dtype == tf.float32 and \
             offset_y.dtype == tf.float32 and \
