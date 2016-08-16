@@ -472,6 +472,7 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
             if step % display_step == 0:
 
                 cost, _loss_coord_xy, _loss_coord_wh, _loss_is_obj, _loss_no_obj = sess.run([loss, 
+                    
                     tf.reduce_mean(loss_coord_xy), 
                     tf.reduce_mean(loss_coord_wh), 
                     tf.reduce_mean(loss_is_obj),
@@ -501,7 +502,7 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 64
+    batch = 5
     display = 1
     #dataset = '5000_raw'
     dataset = 'char'
