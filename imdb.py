@@ -16,6 +16,65 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 """
 
+
+class queue(object):
+
+    def __init__(self, data, batch):
+
+        self.length = len(data)
+
+        self.begin = 0
+
+        self.end = self.begin + batch
+
+        self.step = 0
+
+        self.batch = batch
+
+        self.data = data
+
+
+
+    def next_batch(self):
+
+
+        self.begin = self.step * self.batch % self.length
+        
+        self.end = (self.step + 1) * self.batch % self.length 
+
+        assert self.end != self.begin
+        
+        if self.begin + self.batch > self.length :
+
+            batch = np.vstack((self.data[self.begin : ], self.data[ : self.end]))
+
+        elif self.begin + self.batch == self.length:
+
+            batch = np.array(self.data[self.begin :])
+   
+        else : 
+
+            batch = np.array(self.data[self.begin : self.end])
+         
+
+
+        if batch.shape[0] != self.batch:
+
+            print batch
+            print batch.shape
+            print self.begin
+            print self.end
+            print 'total {} images '.format(self.length)
+
+        assert batch.shape[0] == self.batch 
+
+        self.step += 1
+
+        return batch
+
+
+
+
 def merge_roidbs(filename, datum, ratio, original):
 
     path = Path('Annotations', 'xmls', filename + '.xml')
@@ -132,7 +191,11 @@ def generate_caches_with_raw(database, lists):
 
     print 'time : ', time.time() - start
 
+<<<<<<< HEAD
 def load_imdb_from_raw_cnn(dataset, cls_name):
+=======
+def load_imdb_from_raw_cnn(dataset, cls_name, batch):
+>>>>>>> 58fba9d7a8010ad48a65803c85f6f978c8ce7f94
 
     start = time.time()
     env = lmdb.open(dataset, readonly = True)
@@ -179,7 +242,11 @@ def load_imdb_from_raw_cnn(dataset, cls_name):
 
     #print images.dtype
     #print images.shape
+<<<<<<< HEAD
     return images, objects, filename
+=======
+    return queue(images, batch), queue(objects, batch), filename
+>>>>>>> 58fba9d7a8010ad48a65803c85f6f978c8ce7f94
 
 
 

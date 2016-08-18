@@ -29,5 +29,5 @@ def IoU(bbox,gt):
     iou = tf.mul(tf.mul(iou, mask_less), mask_great) 
     
     
-    print iou.get_shape()
+    #print iou.get_shape()
     return iou

@@ -67,7 +67,6 @@ def convert_to_one(bbox, width, height, S):
 
     return bbox
 
-
 def convert_to_reality(bbox, width, height, S):
 
     relative_center_x, relative_center_y, global_w, global_h = bbox
