@@ -242,11 +242,7 @@ def load_imdb_from_raw_cnn(dataset, cls_name, batch):
 
     #print images.dtype
     #print images.shape
-<<<<<<< HEAD
-    return images, objects, filename
-=======
     return queue(images, batch), queue(objects, batch), filename
->>>>>>> 58fba9d7a8010ad48a65803c85f6f978c8ce7f94
 
 
 
