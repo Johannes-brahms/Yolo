@@ -16,6 +16,65 @@ https://gist.github.com/shelhamer/80667189b218ad570e82#file-readme-md
 
 """
 
+
+class queue(object):
+
+    def __init__(self, data, batch):
+
+        self.length = len(data)
+
+        self.begin = 0
+
+        self.end = self.begin + batch
+
+        self.step = 0
+
+        self.batch = batch
+
+        self.data = data
+
+
+
+    def next_batch(self):
+
+
+        self.begin = self.step * self.batch % self.length
+        
+        self.end = (self.step + 1) * self.batch % self.length 
+
+        assert self.end != self.begin
+        
+        if self.begin + self.batch > self.length :
+
+            batch = np.vstack((self.data[self.begin : ], self.data[ : self.end]))
+
+        elif self.begin + self.batch == self.length:
+
+            batch = np.array(self.data[self.begin :])
+   
+        else : 
+
+            batch = np.array(self.data[self.begin : self.end])
+         
+
+
+        if batch.shape[0] != self.batch:
+
+            print batch
+            print batch.shape
+            print self.begin
+            print self.end
+            print 'total {} images '.format(self.length)
+
+        assert batch.shape[0] == self.batch 
+
+        self.step += 1
+
+        return batch
+
+
+
+
 def merge_roidbs(filename, datum, ratio, original):
 
     path = Path('Annotations', 'xmls', filename + '.xml')
@@ -131,6 +190,56 @@ def generate_caches_with_raw(database, lists):
                 print 'load images : {}'.format(num)
 
     print 'time : ', time.time() - start
+
+def load_imdb_from_raw_cnn(dataset, cls_name, batch):
+
+    start = time.time()
+    env = lmdb.open(dataset, readonly = True)
+    print '\n\n[*] loading database .... '
+    objects = None
+    images = []
+    filename = []
+    num = 0
+    with env.begin() as txn:
+        while True:
+            raw = txn.get(str(num))
+            if type(raw) is not str:
+                break
+
+            datum = yolo_pb2.Image_raw()
+            datum.ParseFromString(raw)
+
+            image = np.fromstring(datum.data, dtype=np.uint8)          
+            image = image.reshape((datum.height,  datum.width,  datum.channels))
+
+            for idx in xrange(datum.object_num):
+
+
+                cls = datum.object[idx].cls
+                gt_cls = get_index_by_name(cls, cls_name)
+
+                if type(objects) != np.ndarray:
+                    objects = np.hstack(np.array(gt_cls))
+                else:
+                    objects = np.vstack((objects, np.hstack(np.array(gt_cls))))
+
+                images.append(image.flatten())
+                filename.append(datum.filename)
+                # print type(image.flatten())
+                # print 'load Images : {}'.format(num)
+
+            num += 1
+            # print 'load Images : {}'.format(num)
+
+    assert len(objects) == len(images)
+    print '[*] image loading is done ...'
+    print '[*] consume :', time.time() - start
+    #images = np.array(images, dtype = np.int32)
+
+    #print images.dtype
+    #print images.shape
+    return queue(images, batch), queue(objects, batch), filename
+
 
 
 def load_imdb_from_raw(database, cls_name):
