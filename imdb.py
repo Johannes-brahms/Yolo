@@ -245,7 +245,7 @@ def load_imdb_from_raw_cnn(dataset, cls_name, batch):
 
 
 
-def load_imdb_from_raw(database, cls_name):
+def load_imdb_from_raw(database, cls_name, batch_size):
 
     start = time.time()
     env = lmdb.open(database, readonly = True)
@@ -297,7 +297,8 @@ def load_imdb_from_raw(database, cls_name):
 
     #print images.dtype
     #print images.shape
-    return images, objects, filename
+    return queue(images, batch_size), queue(objects, batch_size), filename
+
 
 
 def generate_caches_with_jpg(database, lists):

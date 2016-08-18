@@ -7,16 +7,16 @@ import numpy as np
 
 # Parameters
 learning_rate = 0.001
-training_iters = 100
+training_iters = 2000
 display_step = 10
-batch = 50
+batch = 10
 # Network Parameters
 n_input = 448 # MNIST data input (img shape: 28*28)
 n_classes = 35 # MNIST total classes (0-9 digits)
 dropout = 0.75 # Dropout, probability to keep units
 
 # tf Graph input
-x = tf.placeholder(tf.float32, [None, n_input **2 * 3])
+x = tf.placeholder(tf.float32, [None, n_input ** 2 * 3])
 y = tf.placeholder(tf.float32, [None, n_classes])
 #keep_prob = tf.placeholder(tf.float32) #dropout (keep probability)
 
@@ -112,6 +112,8 @@ biases = {
             
 
 }
+
+
 def save(session, saver, weights, prefix, step):
 
     n = '{}_{}.model'.format(prefix, step)
@@ -122,9 +124,6 @@ def save(session, saver, weights, prefix, step):
 
 # Construct model
 pred = conv_net(x, weights, biases, 1)
-#print 'pred : ', pred.get_shape()
-#pred = log(pred, 'prediction : ')
-#y = log(y, ' target : ')
 
 # Define loss and optimizer
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(pred, y))
@@ -162,6 +161,7 @@ save_list = [weights['conv1'],
              biases['conv9'],
              ]
 # Launch the graph
+
 with tf.Session() as sess:
 
     sess.run(init)
@@ -170,10 +170,8 @@ with tf.Session() as sess:
 
     saver = tf.train.Saver(save_list)
 
-    
-   
-
     # Keep training until reach max iterations
+    
     while step * batch < training_iters:
 
         batch_x = images.next_batch()
@@ -195,10 +193,8 @@ with tf.Session() as sess:
     
 
     print "Optimization Finished!"
-    p = save(sess, saver, weights, 'plate', step * batch)
 
-    # Calculate accuracy for 256 mnist test images
-    #print "Testing Accuracy:", \
-        #sess.run(accuracy, feed_dict={x: mnist.test.images[:256],
-                                      #y: mnist.test.labels[:256],
-                                      #keep_prob: 1.})
+    p = save(sess, saver, weights, 'plate_pretrained_conv_weight', step * batch)
+
+    print 'pretrained weights saved : {}'.format(p)
+ 
