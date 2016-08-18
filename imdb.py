@@ -132,6 +132,56 @@ def generate_caches_with_raw(database, lists):
 
     print 'time : ', time.time() - start
 
+def load_imdb_from_raw_cnn(dataset, cls_name):
+
+    start = time.time()
+    env = lmdb.open(dataset, readonly = True)
+    print '\n\n[*] loading database .... '
+    objects = None
+    images = []
+    filename = []
+    num = 0
+    with env.begin() as txn:
+        while True:
+            raw = txn.get(str(num))
+            if type(raw) is not str:
+                break
+
+            datum = yolo_pb2.Image_raw()
+            datum.ParseFromString(raw)
+
+            image = np.fromstring(datum.data, dtype=np.uint8)          
+            image = image.reshape((datum.height,  datum.width,  datum.channels))
+
+            for idx in xrange(datum.object_num):
+
+
+                cls = datum.object[idx].cls
+                gt_cls = get_index_by_name(cls, cls_name)
+
+                if type(objects) != np.ndarray:
+                    objects = np.hstack(np.array(gt_cls))
+                else:
+                    objects = np.vstack((objects, np.hstack(np.array(gt_cls))))
+
+                images.append(image.flatten())
+                filename.append(datum.filename)
+                # print type(image.flatten())
+                # print 'load Images : {}'.format(num)
+
+            num += 1
+            # print 'load Images : {}'.format(num)
+
+    assert len(objects) == len(images)
+    print '[*] image loading is done ...'
+    print '[*] consume :', time.time() - start
+    #images = np.array(images, dtype = np.int32)
+
+    #print images.dtype
+    #print images.shape
+    return images, objects, filename
+
+
 
 def load_imdb_from_raw(database, cls_name):
 
