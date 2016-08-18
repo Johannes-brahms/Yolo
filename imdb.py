@@ -191,11 +191,10 @@ def generate_caches_with_raw(database, lists):
 
     print 'time : ', time.time() - start
 
-<<<<<<< HEAD
-def load_imdb_from_raw_cnn(dataset, cls_name):
-=======
+
+
+
 def load_imdb_from_raw_cnn(dataset, cls_name, batch):
->>>>>>> 58fba9d7a8010ad48a65803c85f6f978c8ce7f94
 
     start = time.time()
     env = lmdb.open(dataset, readonly = True)
