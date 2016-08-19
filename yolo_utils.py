@@ -71,6 +71,9 @@ def convert_to_reality(bbox, width, height, S):
 
     relative_center_x, relative_center_y, global_w, global_h = bbox
 
+    relative_center_x = tf.clip_by_value(relative_center_x, 0, 1)
+    relative_center_y = tf.clip_by_value(relative_center_y, 0, 1)
+
     w = tf.cast(tf.mul(global_w, width), tf.int32)
     h = tf.cast(tf.mul(global_h, height), tf.int32)
 
