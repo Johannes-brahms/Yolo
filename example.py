@@ -1,15 +1,38 @@
 import tensorflow as tf
 from imdb import load_imdb_from_raw_cnn
 import numpy as np
+import argparse, sys
+
 # Import MINST data
 #from tensorflow.examples.tutorials.mnist import input_data
 #mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
 # Parameters
-learning_rate = 0.001
-training_iters = 2000
+
+def parse_args():
+
+    parser = argparse.ArgumentParser(description = 'yolo training script')
+
+    parser.add_argument('--imdb', type = str, help = 'image dataset')
+    parser.add_argument('--snapshot', dest = 'snapshot', type = str, help = 'load weight from snapshot', default = None)
+    parser.add_argument('--mode', type = str, dest = 'mode', help = 'train or test')
+    parser.add_argument('--i', type = str, dest = 'image', help = 'input test image')
+    parser.add_argument('--weights', type = str, dest = 'weights', help = 'weights for testing')
+    # test net
+
+
+    args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+    return args
+
+training_iters = 100000
 display_step = 10
-batch = 10
+batch = 55
 # Network Parameters
 n_input = 448 # MNIST data input (img shape: 28*28)
 n_classes = 35 # MNIST total classes (0-9 digits)
@@ -87,8 +110,8 @@ weights = {
             'conv8': tf.Variable(tf.random_normal([3, 3, 1024, 1024]), name = 'w_conv8'),
             'conv9': tf.Variable(tf.random_normal([3, 3, 1024, 1024]), name = 'w_conv9'),
             
-            'fc1': tf.Variable(tf.random_normal([7 * 7 * 1024, 4096])),
-            'out': tf.Variable(tf.random_normal([4096, n_classes]))
+            'fc1': tf.Variable(tf.random_normal([7 * 7 * 1024, 4096]), name = 'w_fc1'),
+            'out': tf.Variable(tf.random_normal([4096, n_classes]), name = 'w_out')
             
 }
 
@@ -107,20 +130,29 @@ biases = {
             'conv8': tf.Variable(tf.random_normal([1024]), name = 'b_conv8'),
             'conv9': tf.Variable(tf.random_normal([1024]), name = 'b_conv9'),
             
-            'fc1':tf.Variable(tf.random_normal([4096])),
-            'out':tf.Variable(tf.random_normal([35])),
+            'fc1':tf.Variable(tf.random_normal([4096]), name = 'b_fc1'),
+            'out':tf.Variable(tf.random_normal([35]), name = 'b_out')
             
 
 }
 
 
-def save(session, saver, weights, prefix, step):
+def save(session, saver, prefix, step):
 
     n = '{}_{}.model'.format(prefix, step)
 
     p = saver.save(session, n)
 
     return p
+
+learning_rate = tf.train.exponential_decay(
+            0.01,                # Base learning rate.
+            0,  # Current index into the dataset.
+            10000,          # Decay step.
+            0.85,                # Decay rate.
+            staircase=True)
+
+arg = parse_args()
 
 # Construct model
 pred = conv_net(x, weights, biases, 1)
@@ -141,7 +173,7 @@ n_class = len(cls)
 
 images, objects, filename = load_imdb_from_raw_cnn('char', cls, batch)
 
-save_list = [weights['conv1'],
+conv_weights = [weights['conv1'],
              weights['conv2'],
              weights['conv3'],
              weights['conv4'],
@@ -168,7 +200,17 @@ with tf.Session() as sess:
 
     step = 1
 
-    saver = tf.train.Saver(save_list)
+    pretrained_weights = tf.train.Saver(conv_weights) # only convolution weights
+    pretrained_snapshot = tf.train.Saver() # contains fully connected weights
+
+
+    if arg.snapshot is not None:
+
+      pretrained_snapshot.restore(sess, arg.snapshot)
+
+      step = int(arg.snapshot.split('_')[-1].split('.')[0]) / batch
+
+      print 'load snapshot : {}'.format(arg.snapshot)
 
     # Keep training until reach max iterations
     
@@ -180,21 +222,34 @@ with tf.Session() as sess:
         # Run optimization op (backprop)
         sess.run(optimizer, { x : batch_x, y : batch_y })
 
+        learning_rate = tf.train.exponential_decay(
+            0.01,                # Base learning rate.
+            step * batch,  # Current index into the dataset.
+            10000,          # Decay step.
+            0.85,                # Decay rate.
+            staircase=True)
+
+        
         if step % display_step == 0:
 
             print " ---------------------------------------"
             # Calculate batch loss and accuracy
-            loss, acc = sess.run([cost, accuracy], { x : batch_x,
+            loss, acc, rate = sess.run([cost, accuracy, learning_rate], { x : batch_x,
                                                      y : batch_y, })
             print "Iter " + str(step*batch) + ", Minibatch Loss= " + \
                   "{:.6f}".format(loss) + ", Training Accuracy= " + \
                   "{:.5f}".format(acc)
+            print 'Learning rate : ', rate
+
         step += 1
+
+
     
 
     print "Optimization Finished!"
 
-    p = save(sess, saver, weights, 'plate_pretrained_conv_weight', step * batch)
+    p_w = save(sess, pretrained_weights, 'plate_pretrained_conv_weight', step * batch)
+    p_s = save(sess, pretrained_snapshot, 'plate_pretrained_snapshot', step * batch)
 
-    print 'pretrained weights saved : {}'.format(p)
- 
+    print 'pretrained conv weights saved : {}'.format(p_w)
+    print 'pretrained snapshot saved : {}'.format(p_s)
