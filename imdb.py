@@ -8,6 +8,7 @@ from StringIO import StringIO
 from PIL import Image
 from os.path import join as Path
 from skimage import io
+import skimage
 from yolo_utils import cell_locate
 
 """
@@ -278,10 +279,11 @@ def load_imdb_from_raw(database, cls_name, batch_size):
                 gt_cls = get_index_by_name(cls, cls_name)
 
                 if type(objects) != np.ndarray:
-                    objects = np.hstack((np.array([x, y, w, h]), gt_cls))#, object_center))
+                    objects = np.hstack((np.array([x, y, w, h]), gt_cls))
                 else:
-                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls))))#, object_center))))
+                    objects = np.vstack((objects, np.hstack((np.array([x, y, w, h]), gt_cls))))
 
+                image = skimage.img_as_float(image) 
                 images.append(image.flatten())
                 filename.append(datum.filename)
                 # print type(image.flatten())
