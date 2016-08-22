@@ -278,6 +278,8 @@ def load_imdb_from_raw(database, cls_name, batch_size):
                 cls = datum.object[idx].cls
                 gt_cls = get_index_by_name(cls, cls_name)
 
+                #print gt_cls
+
                 if type(objects) != np.ndarray:
                     objects = np.hstack((np.array([x, y, w, h]), gt_cls))
                 else:

@@ -5,14 +5,40 @@ from skimage import io
 import tensorflow as tf
 import numpy as np
 import argparse
+import skimage
 import sys
 import cv2
+def draw(bbox, image, label, iou_threshold):
+
+    for i, b in enumerate(bbox):
+
+        if b[4] > iou_threshold :
+
+            x1 = int(b[0])
+            y1 = int(b[1])
+
+            x2 = 448 if int(b[0] + b[2]) > 448 else int(b[0] + b[2])
+            y2 = 448 if int(b[1] + b[3]) > 448 else int(b[1] + b[3])
+
+            assert len(b[5:]) == 35
+            print b[5:]
+            print np.argmax(b[5:])
+
+            cls = label[np.argmax(b[5:])]
+
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255,0,0), 2)
+
+
+
+            print '[ {} {} {} {} ] [ {} ] [ {} ]'.format(x1, y1, x2, y2, b[4], cls)
+
+    cv2.imshow('image', image)
+    cv2.waitKey(0)
 
 
 def parse_args():
 
     parser = argparse.ArgumentParser(description = 'yolo training script')
-
     parser.add_argument('--imdb', type = str, help = 'image dataset')
     parser.add_argument('--snapshot', dest = 'snapshot', type = str, help = 'load weight from snapshot', default = None)
     parser.add_argument('--mode', type = str, dest = 'mode', help = 'train or test')
@@ -40,7 +66,7 @@ def conv2d(x, W, b, strides = 1):
     # filters [ width , height , channels , output channels (number of filters)]
     x = tf.nn.conv2d(x, W, strides = [1, strides, strides, 1], padding = 'SAME')
     x = tf.nn.bias_add(x, b)
-    x = tf.nn.l2_normalize(x, 1, epsilon=1e-12, name=None)
+    #x = tf.nn.l2_normalize(x, 1, epsilon=1e-12, name=None)
     return leakey(x)
 
 def maxpool2d(x, k = 2):
@@ -80,12 +106,14 @@ def conv_net(x, weights, biases, n_class, dropout):
     conv5 = maxpool2d(conv5, k = 2)
 
     conv6 = conv2d(conv5, weights['conv6'], biases['conv6'], strides = 1)
-    conv6 = avgpool2d(conv6, k = 2)
+    conv6 = maxpool2d(conv6, k = 2)
 
     conv7 = conv2d(conv6, weights['conv7'], biases['conv7'], strides = 1)
+    #conv7 = tf.nn.l2_normalize(conv7, 1, epsilon=1e-12, name=None)
     conv8 = conv2d(conv7, weights['conv8'], biases['conv8'], strides = 1)
+    #conv8 = tf.nn.l2_normalize(conv8, 1, epsilon=1e-12, name=None)
     conv9 = conv2d(conv8, weights['conv9'], biases['conv9'], strides = 1)
-
+    conv9 = tf.nn.l2_normalize(conv9, 1, epsilon=1e-12, name=None)
 
     # Fully connected layer
     # Reshape conv2 output to fit fully connected layer input
@@ -95,7 +123,7 @@ def conv_net(x, weights, biases, n_class, dropout):
    
     fc1 = tf.reshape(conv9, [-1, weights['fc1'].get_shape().as_list()[0]])
     fc1 = tf.add(tf.matmul(fc1, weights['fc1']), biases['fc1'])
-    fc1 = tf.nn.l2_normalize(fc1, 1, epsilon=1e-12, name=None)
+    #fc1 = tf.nn.l2_normalize(fc1, 1, epsilon=1e-12, name=None)
 
     fc1 = leakey(fc1)
     #fc1 = tf.nn.relu(fc1)
@@ -103,7 +131,7 @@ def conv_net(x, weights, biases, n_class, dropout):
     # fc1 = tf.nn.dropout(fc1, dropout)
 
     fc2 = tf.add(tf.matmul(fc1, weights['fc2']), biases['fc2'])
-    fc2 = tf.nn.l2_normalize(fc2, 1, epsilon=1e-12, name=None)
+    #fc2 = tf.nn.l2_normalize(fc2, 1, epsilon=1e-12, name=None)
 
     fc2 = leakey(fc2)
     #fc2 = log(fc2, 'fc2 : ')
@@ -112,7 +140,7 @@ def conv_net(x, weights, biases, n_class, dropout):
     
     fc3 = tf.add(tf.matmul(fc2, weights['fc3']), biases['fc3'])
     fc3 = tf.reshape(fc3, [-1, S * S, n_class + 5 * B])
-
+    #fc3 = tf.abs(fc3)
     #fc3 = log(fc3, 'fc3 : ')
 
     return fc3
@@ -265,15 +293,15 @@ training
 """
 
 
-def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_width = 448, n_height = 448, display = 20, threshold = 0.5, snapshot = None, pretrained_weights = None):
+def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n_width = 448, n_height = 448, display = 20, threshold = 0.5, snapshot = None, pretrained_weights = None):
     
     print '[*] loading configurence '
 
-    n_class = len(cls)
+    n_class = len(label)
 
     # load dataset
 
-    images, objects, filename = load_imdb_from_raw(dataset, cls, batch)
+    images, objects, filename = load_imdb_from_raw(dataset, label, batch)
 
     #images = np.array(images)
 
@@ -364,13 +392,15 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
         pred_y = log(pred_y, 'pred  Y  : ')
         pred_w = log(pred_w, 'pred  W  : ')
         pred_h = log(pred_h, 'pred  H  : ')
-        #pred_C = log(pred_c, 'pred  C  : ')
+        pred_c = log(pred_c, 'pred  C  : ')
         #w = log(weights['conv1'], 'weights conv 1 : ')
         gt_x = tf.reshape(tf.slice(y, [0, 0], [-1, 1]), [-1, 1, 1])
         gt_y = tf.reshape(tf.slice(y, [0, 1], [-1, 1]), [-1, 1, 1]) 
         gt_w = tf.reshape(tf.slice(y, [0, 2], [-1, 1]), [-1, 1, 1])
         gt_h = tf.reshape(tf.slice(y, [0, 3], [-1, 1]), [-1, 1, 1])
-        gt_c = tf.slice(confidence, [0, 0, b], [-1, -1, 1]) 
+        gt_c = tf.slice(confidence, [0, 0, b], [-1, -1, 1])
+
+        gt_c = log(gt_c, 'gt C : ')
 
         # predict confidence and groundtruth confidence, so the predictor can learn if it contains a objects
 
@@ -483,65 +513,45 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
         if pretrained_weights is not None:
 
             #print 'pretrained weight : ', pretrained_weights
-
             print '[*] Loading pretrained weights : {}'.format(pretrained_weights) 
-
             load_convolution_weights = tf.train.Saver(convolution_weights)
-
             tf.initialize_all_variables().run()
-
             load_convolution_weights.restore(sess, pretrained_weights)
-
             step = 0
-
             # some learning rate modify 
 
         elif snapshot is not None:
 
-            #print 'snapshot : ', snapshot
-
             print '[*] Loading snapshot : {}'.format(snapshot)
 
-            load_total_weights = tf.train.Saver(convolution_weights + fully_connect_weights)
-
-            tf.initialize_all_variables().run()
-
+            tf.initialize_all_variables().run()    
+            load_total_weights = tf.train.Saver()        
             load_total_weights.restore(sess, snapshot)
-
             step = int(snapshot.split('_')[-1].split('.')[0]) / batch          
 
         else:
 
             # train from begin
-
             saver = tf.train.Saver()
-
             init = tf.initialize_all_variables()
-
             sess.run(init)
-
             step = 0
 
         print '[*] Start Training ... '
 
         while step * batch < training_iters:
 
-            #print 'index : ', index
-
             batch_x = images.next_batch()
             batch_y = objects.next_batch()
 
-            #print 'batch x : ', batch_x[0]
-            #print 'batch_y : ', batch_y[0]
-
-            #print 'weights : ', weights['conv1']
-
             learning_rate = tf.train.exponential_decay(
-                                0.01,                # Base learning rate.
+                                0.001,                # Base learning rate.
                                 step * batch,  # Current index into the dataset.
                                 10000,          # Decay step.
-                                0.9,                # Decay rate.
+                                0.85,                # Decay rate.
                                 staircase=True)
+
+            
 
             if step % display_step == 0:
 
@@ -551,6 +561,9 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
                 print "Iter " , str(step * batch)  + " , Minibatch Loss = " , cost ," , Learning rate : ", l_rate
 
+            
+            sess.run(optimizer, { x : batch_x, y : batch_y })
+
             step += 1
 
             
@@ -559,7 +572,10 @@ def train(learning_rate, iters, batch, cls, dataset, n_bbox = 2, n_cell = 7, n_w
 
         saver = tf.train.Saver(yolo_tiny)
 
+        snapshot_saver = tf.train.Saver()
+
         p = save(sess, saver,'./char', str(step * batch))
+        p = save(sess, snapshot_saver,'./char_snapshot', str(step * batch))
 
         print '[*] Model saved in file : {}'.format(p)
 
@@ -581,10 +597,10 @@ if __name__ == '__main__':
     n_input = n_width * n_height
 
     #cls = ['plate']
-    cls = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
+    label = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z', '0','1','2','3','4','5','6','7','8','9']
 
+    n_class = len(label)
 
-    n_class = len(cls)
     B = 1
     S = 7
 
@@ -595,17 +611,19 @@ if __name__ == '__main__':
 
         
         learning_rate = 0.01
-        training_iters = 100000
-        train(learning_rate, training_iters, batch, cls, dataset, display = 1, snapshot = args.snapshot, pretrained_weights = args.weights)
+        training_iters = 150000
+        train(learning_rate, training_iters, batch, label, dataset, display = 1, snapshot = args.snapshot, pretrained_weights = args.weights)
     
     elif args.mode == 'test':
 
         x = tf.placeholder(tf.float32, [n_input * 3])
         image = io.imread(args.image, False)
+        image = skimage.img_as_float(image)
         image = cv2.resize(image, (448, 448))
+        #cv2.imshow('image', image)
+        #cv2.waitKey(0)
 
-        image = image.flatten()
-        n_class = len(cls)
+        data = image.flatten()
         weights = {
 
         
@@ -644,7 +662,7 @@ if __name__ == '__main__':
         }
     
         
-        pred = conv_net(x, weights, biases, len(cls), 1)
+        pred = conv_net(x, weights, biases, n_class, 1)
 
         with tf.Session() as sess:
 
@@ -692,11 +710,7 @@ if __name__ == '__main__':
 
                 raise
 
-            #print pred.get_shape()
-            p = sess.run(pred, { x : image })
-
-            #print 'p shape : ', p.shape
-
+            p = sess.run(pred, { x : data })
 
             for b in xrange(B):
 
@@ -704,16 +718,19 @@ if __name__ == '__main__':
                 pred_y = p[:,:,b*5+1]
                 pred_w = p[:,:,b*5+2]
                 pred_h = p[:,:,b*5+3]
+                pred_c = p[:,:,b*5+4]
+                pred_cls = p[:,:,b*5+5:]
                
                 pred_bbox = [pred_x, pred_y, pred_w, pred_h]
 
-                pred_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
+                x, y, w, h = sess.run(convert_to_reality(pred_bbox, n_width, n_height, S))
 
-               # print 'box : [{}]'.format(sess.run(pred_bbox))
-                print 'x : {}'.format(sess.run(pred_bbox[0]))
-                print 'y : {}'.format(sess.run(pred_bbox[1]))
-                print 'w : {}'.format(sess.run(pred_bbox[2]))
-                print 'h : {}'.format(sess.run(pred_bbox[3]))
-                print '--------------------------------------------------'
-
-   
+                x = np.reshape(x, (49, 1))
+                y = np.reshape(y, (49, 1))
+                w = np.reshape(w, (49, 1))
+                h = np.reshape(h, (49, 1))
+                c = np.reshape(pred_c, (49, 1))
+                pred_cls = np.reshape(pred_cls, (49, n_class))
+                print 'pred cls ; ', pred_cls.shape
+                bbox = np.hstack((x, y, w, h, c, pred_cls))
+                draw(bbox, image, label, 0.9)
