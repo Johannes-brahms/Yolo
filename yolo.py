@@ -12,6 +12,7 @@ def draw(bbox, image, label, iou_threshold):
 
     for i, b in enumerate(bbox):
 
+        #print b[4]
         if b[4] > iou_threshold :
 
             x1 = int(b[0])
@@ -21,8 +22,8 @@ def draw(bbox, image, label, iou_threshold):
             y2 = 448 if int(b[1] + b[3]) > 448 else int(b[1] + b[3])
 
             assert len(b[5:]) == 35
-            print b[5:]
-            print np.argmax(b[5:])
+            #print b[5:]
+            #print np.argmax(b[5:])
 
             cls = label[np.argmax(b[5:])]
 
@@ -79,7 +80,7 @@ def one(x):
 
     maximum = tf.reshape(tf.reduce_max(x, 1), [-1, 1])
     minimum = tf.reshape(tf.reduce_min(x, 1), [-1, 1])
-    return (maximum - x) / (maximum - minimum)
+    return (x - minimum) / (maximum - minimum)
 
 def maxpool2d(x, k = 2):
     return tf.nn.max_pool(x, ksize = [1, k, k, 1], strides = [1, k, k, 1], padding = 'SAME')
@@ -161,13 +162,14 @@ def conv_net(x, weights, biases, n_class, dropout):
     #fc2 = tf.nn.relu(fc2)
     
     fc3 = tf.add(tf.matmul(fc2, weights['fc3']), biases['fc3'])
+    fc3 = one(fc3)
     fc3 = tf.reshape(fc3, [-1, S * S, n_class + 5 * B])
     #fc3 = tf.nn.l2_normalize(fc3, 1, epsilon=1e-12, name=None)
     
     #fc3 = tf.abs(fc3)
     #fc3 = log(fc3, 'fc3 : ')
 
-    return tf.abs(fc3)
+    return fc3
 
 def init(session, saver, pretrained):
 
@@ -192,11 +194,12 @@ def Confidence(pred, y):
         pred_y = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 1], [-1, -1, 1]), [-1, S * S ])
         pred_w = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1]), [-1, S * S ])
         pred_h = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1]), [-1, S * S ])
+        """
         pred_x = log(pred_x, 'pred one bbox x : ')
         pred_y = log(pred_y, 'pred one bbox y : ')
         pred_w = log(pred_w, 'pred one bbox w : ')
         pred_h = log(pred_h, 'pred one bbox h : ')
-   
+        """
         pred_bbox = [pred_x, pred_y, pred_w, pred_h]
 
         pred_reality_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
@@ -293,7 +296,7 @@ def Responsible(center, confidence):
     #iou = tf.mul(center, confidence)
 
     iou = tf.reshape(confidence, [-1, S * S * B])
-
+    #iou = tf.reshape(tf.mul(center, confidence), [-1, S * S * B])
     # find out maximum IoU
 
     #maximum_IoU = tf.reshape(tf.reduce_max(iou, 2), [-1, S * S, 1])
@@ -325,7 +328,16 @@ def Responsible(center, confidence):
 
 def Appear(confidence, batch):
 
-    return tf.greater(tf.reduce_sum(confidence,2),tf.zeros((batch, S * S)))
+    return tf.greater(tf.reduce_sum(confidence, 2),tf.zeros((batch, S * S)))
+
+def softmax(logits):
+
+    e = tf.exp(logits)
+
+    return e / tf.reshape(tf.reduce_sum(e, 2), [-1, 49, 1])
+
+
+
 
 """
 
@@ -395,8 +407,8 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
     
     lcoord = tf.constant(5, dtype = tf.float32)
     lnoobj = tf.constant(0.5, dtype = tf.float32)
-    lcoord2 = tf.constant(2.5, dtype = tf.float32)
-    lnoobj2 = tf.constant(0.5, dtype = tf.float32)
+    #lcoord2 = tf.constant(1, dtype = tf.float32)
+    #lnoobj2 = tf.constant(1, dtype = tf.float32)
     # forward propagate
 
     pred = conv_net(x, weights, biases, n_class, 1)
@@ -420,54 +432,51 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
     #responsible = log(responsible, 'responsible 2 : ') 
     #not_responsible = log(not_responsible, 'not responsible 2 : ') 
 
-    # create loss function 
-    
+    # create loss function
+
+
+    gt_x = tf.reshape(tf.slice(y, [0, 0], [-1, 1]), [-1, 1, 1])
+    gt_y = tf.reshape(tf.slice(y, [0, 1], [-1, 1]), [-1, 1, 1]) 
+    gt_w = tf.reshape(tf.slice(y, [0, 2], [-1, 1]), [-1, 1, 1])
+    gt_h = tf.reshape(tf.slice(y, [0, 3], [-1, 1]), [-1, 1, 1])
+    bbox = [gt_x, gt_y, gt_w, gt_h]
+
+    # convert the x , y to the offset of grid cells and w , h to the range of 0 to 1 by divided by image size
+
+    # offset x , offset y will only located in one grid cells , others will be set to 0 by the variable " Responsible "
+ 
+    gt_offset_x, gt_offset_y, gt_offset_w, gt_offset_h = convert_to_one(bbox, n_width, n_height, S)
+    r_loss_coord_xy = None
     for b in xrange(B):
 
         pred_offset_x = tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1])
         pred_offset_y = tf.slice(pred, [0, 0, b * 5 + 1], [-1, -1, 1])
         pred_offset_w = tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1])
         pred_offset_h = tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1])
-        pred_c = tf.slice(pred, [0, 0, b * 5 + 4], [-1, -1, 1])
+        pred_confidence = tf.slice(pred, [0, 0, b * 5 + 4], [-1, -1, 1])
 
 
         """
-        
-        pred_x = log(pred_x, 'pred  X  : ')
-        pred_y = log(pred_y, 'pred  Y  : ')
-        pred_w = log(pred_w, 'pred  W  : ')
-        pred_h = log(pred_h, 'pred  H  : ')
-        pred_c = log(pred_c, 'pred  C  : ')
+            pred_x = log(pred_x, 'pred  X  : ')
+            pred_y = log(pred_y, 'pred  Y  : ')
+            pred_w = log(pred_w, 'pred  W  : ')
+            pred_h = log(pred_h, 'pred  H  : ')
+            pred_c = log(pred_c, 'pred  C  : ')
+
         """
 
-        #w = log(weights['conv1'], 'weights conv 1 : ')
-        gt_x = tf.reshape(tf.slice(y, [0, 0], [-1, 1]), [-1, 1, 1])
-        gt_y = tf.reshape(tf.slice(y, [0, 1], [-1, 1]), [-1, 1, 1]) 
-        gt_w = tf.reshape(tf.slice(y, [0, 2], [-1, 1]), [-1, 1, 1])
-        gt_h = tf.reshape(tf.slice(y, [0, 3], [-1, 1]), [-1, 1, 1])
-        gt_c = tf.slice(confidence, [0, 0, b], [-1, -1, 1])
-
-
-   
         
+        gt_confidence = tf.slice(confidence, [0, 0, b], [-1, -1, 1])
 
-        #gt_c = log(gt_c, 'gt C : ')
 
-        # predict confidence and groundtruth confidence, so the predictor can learn if it contains a objects
+            # predict confidence and groundtruth confidence, so the predictor can learn if it contains a objects
 
-        bbox = [gt_x, gt_y, gt_w, gt_h]
-
-        # convert the x , y to the offset of grid cells and w , h to the range of 0 to 1 by divided by image size
-
-        # offset x , offset y will only located in one grid cells , others will be set to 0 by the variable " Responsible "
- 
-        gt_offset_x, gt_offset_y, gt_offset_w, gt_offset_h = convert_to_one(bbox, n_width, n_height, S)
 
         d_offset_x = tf.pow(tf.sub(tf.cast(pred_offset_x, tf.float32), tf.cast(gt_offset_x, tf.float32)), 2)
         d_offset_y = tf.pow(tf.sub(tf.cast(pred_offset_y, tf.float32), tf.cast(gt_offset_y, tf.float32)), 2)
         d_offset_w = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_offset_w), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_offset_w), 0.5), tf.float32)), 2)
         d_offset_h = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_offset_h), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_offset_h), 0.5), tf.float32)), 2)
-        dc = tf.pow(tf.sub(pred_c, gt_c), 2) 
+        d_confidence = tf.pow(tf.sub(pred_confidence, gt_confidence), 2) 
         
         """
         dx = log(dx, 'dx : ')
@@ -479,7 +488,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
         loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_offset_x, d_offset_y]))     
         loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_offset_w, d_offset_h]))
 
-        
+        """
         " reality box loss "
 
         pred_offset_bbox = [pred_offset_x, pred_offset_y, pred_offset_w, pred_offset_h]
@@ -500,26 +509,25 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
         loss_real_xy = tf.mul(tf.mul(lcoord2 , tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_real_x, d_real_y]))     
         loss_real_wh = tf.mul(tf.mul(lcoord2 , tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_real_w, d_real_h]))
+        """
         
+        loss_is_obj = tf.mul(tf.slice(responsible, [0, 0, b], [-1, -1, 1]), d_confidence)
+        loss_no_obj = tf.mul(tf.mul(tf.slice(not_responsible, [0, 0, b], [-1,-1, 1]), d_confidence), lnoobj)
 
-        loss_is_obj = tf.mul(tf.slice(responsible, [0, 0, b], [-1, -1, 1]), dc)
-        loss_no_obj = tf.mul(tf.mul(tf.slice(not_responsible, [0, 0, b], [-1,-1, 1]), dc), lnoobj)
+        #loss_coord_xy = log(tf.reduce_mean(loss_coord_xy), "loss xy : ")
+        #loss_coord_wh = log(tf.reduce_mean(loss_coord_wh), "loss wh : ")
+        #loss_is_obj = log(loss_is_obj, "loss is obj : ")
+        #loss_no_obj = log(loss_no_obj, "loss no obj : ")
 
-        loss_coord_xy = log(loss_coord_xy, "loss xy : ")
-        loss_coord_wh = log(loss_coord_wh, "loss wh : ")
-        loss_is_obj = log(loss_is_obj, "loss is obj : ")
-        loss_no_obj = log(loss_no_obj, "loss no obj : ")
-
-        _loss = tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh, loss_real_xy, loss_real_wh]), tf.add(loss_is_obj, loss_no_obj)])
 
 
         if loss == None:
 
-            loss = _loss
+            loss = tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])
 
         else:
 
-            loss = tf.concat(2, [loss, _loss])
+            loss = tf.concat(2, [loss, tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])])
 
         index = b + 1
 
@@ -532,17 +540,22 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
     gt_cls = log(gt_cls, 'gt cls : ')
 
+
     pred_cls = tf.slice(pred, [0, 0, 5 * index], [-1,-1,-1])
 
     pred_cls = log(pred_cls, 'pred cls : ')
 
     dcls = tf.pow(tf.sub(pred_cls, gt_cls), 2)
 
+    #dcls = tf.sub(softmax(pred_cls), gt_cls)
+
     dcls = tf.reshape(tf.reduce_sum(dcls, 2), [-1, S * S, 1])
 
-    dcls = log(dcls, " d cls : ")
+    dcls = log(dcls, "d cls 1 : ")
 
     dcls = tf.mul(tf.slice(center, [0, 0, 0], [-1,-1, 1]), dcls)
+
+    #dcls = log(dcls, "d cls 2 : ")
 
     loss = tf.concat(2, [loss, dcls])
 
@@ -624,7 +637,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
             batch_y = objects.next_batch()
 
             learning_rate = tf.train.exponential_decay(
-                                0.001,                # Base learning rate.
+                                0.0001,                # Base learning rate.
                                 step * batch,  # Current index into the dataset.
                                 10000,          # Decay step.
                                 0.9,                # Decay rate.
@@ -642,6 +655,8 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
                 #print 'resonsible : ', res[0]
                 #print 'confidence : ', conf[0]
+                #print 'conf : ', res[0] * conf[0]
+            
                 #print 'conf : ', conf.shape
                 #print 'dcls : ', _dcls[0]
                 #print 'dcls shape : ', _dcls.shape
@@ -659,8 +674,8 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
         snapshot_saver = tf.train.Saver()
 
-        p = save(sess, saver,'./char_positve_c;', str(step * batch))
-        p = save(sess, snapshot_saver,'./char_positve_c', str(step * batch))
+        p = save(sess, saver,'./char_grad', str(step * batch))
+        p = save(sess, snapshot_saver,'./char_grad_snapshot', str(step * batch))
 
         print '[*] Model saved in file : {}'.format(p)
 
@@ -673,7 +688,7 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 5
+    batch = 50
     display = 1
     #dataset = 'plate_300'
     dataset = 'char'
@@ -695,8 +710,8 @@ if __name__ == '__main__':
     if args.mode == 'train':
 
         
-        learning_rate = 1
-        training_iters = 100000
+        learning_rate = 0.0001
+        training_iters = 10000
         train(learning_rate, training_iters, batch, label, dataset, display = 1, snapshot = args.snapshot, pretrained_weights = args.weights)
     
     elif args.mode == 'test':
@@ -744,8 +759,11 @@ if __name__ == '__main__':
 
         }
     
-        
-        pred = conv_net(x, weights, biases, n_class, 1)
+        with tf.device('/cpu:0'):
+
+            pred = conv_net(x, weights, biases, n_class, 1)
+
+        print n_class
 
         with tf.Session() as sess:
 
@@ -802,9 +820,11 @@ if __name__ == '__main__':
                 pred_w = p[:,:,b*5+2]
                 pred_h = p[:,:,b*5+3]
                 pred_c = p[:,:,b*5+4]
-                pred_cls = p[:,:,b*5+5:]
+                pred_cls = p[:,:,B*5:]
                
                 pred_bbox = [pred_x, pred_y, pred_w, pred_h]
+
+                print ' predict : {} {} {} {}'.format(pred_x[0,0], pred_y[0,0], pred_w[0,0], pred_h[0,0])
 
                 x, y, w, h = sess.run(convert_to_reality(pred_bbox, n_width, n_height, S))
 
@@ -813,7 +833,12 @@ if __name__ == '__main__':
                 w = np.reshape(w, (49, 1))
                 h = np.reshape(h, (49, 1))
                 c = np.reshape(pred_c, (49, 1))
+
+                #print 'class : ', n_class
+
+               # print 'pred : ', pred_cls.shape
+
                 pred_cls = np.reshape(pred_cls, (49, n_class))
                 #print 'pred cls ; ', pred_cls.shape
                 bbox = np.hstack((x, y, w, h, c, pred_cls))
-                draw(bbox, image, label, 0.8)
+                draw(bbox, image, label, 0.7)
