@@ -194,12 +194,12 @@ def Confidence(pred, y):
         pred_y = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 1], [-1, -1, 1]), [-1, S * S ])
         pred_w = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1]), [-1, S * S ])
         pred_h = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1]), [-1, S * S ])
-        """
+
         pred_x = log(pred_x, 'pred one bbox x : ')
         pred_y = log(pred_y, 'pred one bbox y : ')
         pred_w = log(pred_w, 'pred one bbox w : ')
         pred_h = log(pred_h, 'pred one bbox h : ')
-        """
+   
         pred_bbox = [pred_x, pred_y, pred_w, pred_h]
 
         pred_reality_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
@@ -233,32 +233,33 @@ def Center(groundtruth, batch):
 
     c = None
 
-    for b in xrange(B):
+    #for b in xrange(B):
 
         # grid cell index tensor shape : [ batch , cells , one of bboxes ]
 
         # find out which grid cell is the bbox center located in
 
-        grid_cell_index = tf.cast(tf.reshape(cell_locate((n_width, n_height), groundtruth, S), [-1]), tf.int32)
+    grid_cell_index = tf.cast(tf.reshape(cell_locate((n_width, n_height), groundtruth, S), [-1]), tf.int32)
 
         # generate index for terrible tensorflow slicing tensor
 
-        index = tf.range(0, batch)
+    index = tf.range(0, batch)
 
         # pack index with grid cell index 
 
-        indices = tf.cast(tf.pack([index, grid_cell_index], axis = 1), tf.int64)
+    indices = tf.cast(tf.pack([index, grid_cell_index], axis = 1), tf.int64)
 
         # set the " center variable " to one ( which is boolean type ), in terms of grid cell index  
 
-        temp = tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])
-        center_sparse = tf.sparse_tensor_to_dense(temp)
+    temp = tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])
+    center_sparse = tf.sparse_tensor_to_dense(temp)
+    c = tf.reshape(center_sparse, [-1, S * S, 1])
         
         # center_sparse = tf.reshape(center_sparse, [-1, S * S, 1])
 
         # convert sparse tensor to dense tensor, and set others to 0 , represent that they are no responsible to the object
 
-        
+    """
         if type(c) is not tf.python.framework.ops.Tensor:
 
             c = tf.reshape(center_sparse, [-1, S * S, 1])
@@ -268,6 +269,7 @@ def Center(groundtruth, batch):
             center_sparse = tf.reshape(center_sparse, [-1, S * S, 1])
 
             c = tf.concat(2, [c, center_sparse])
+    """
 
     return c
 
@@ -553,7 +555,8 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
     dcls = log(dcls, "d cls 1 : ")
 
-    dcls = tf.mul(tf.slice(center, [0, 0, 0], [-1,-1, 1]), dcls)
+    #dcls = tf.mul(tf.slice(center, [0, 0, 0], [-1,-1, 1]), dcls)
+    dcls = tf.mul(center, dcls)
 
     #dcls = log(dcls, "d cls 2 : ")
 
@@ -637,7 +640,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
             batch_y = objects.next_batch()
 
             learning_rate = tf.train.exponential_decay(
-                                0.0001,                # Base learning rate.
+                                0.00001,                # Base learning rate.
                                 step * batch,  # Current index into the dataset.
                                 10000,          # Decay step.
                                 0.9,                # Decay rate.
@@ -710,8 +713,8 @@ if __name__ == '__main__':
     if args.mode == 'train':
 
         
-        learning_rate = 0.0001
-        training_iters = 10000
+        learning_rate = 0.00001
+        training_iters = 20000
         train(learning_rate, training_iters, batch, label, dataset, display = 1, snapshot = args.snapshot, pretrained_weights = args.weights)
     
     elif args.mode == 'test':
