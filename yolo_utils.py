@@ -89,6 +89,9 @@ def convert_to_reality(bbox, width, height, S):
     real_y_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_y, cell_h), [-1]), tf.cast(tf.mul(relative_center_y, cell_h), tf.int32)), tf.cast(tf.mul(tf.cast(h, tf.float32), 0.5), tf.int32))
 
 
+    real_x_left_up = tf.nn.relu(real_x_left_up)
+    real_y_left_up = tf.nn.relu(real_y_left_up)
+    
     assert real_x_left_up.dtype == tf.int32 and \
            real_y_left_up.dtype == tf.int32 and \
             w.dtype == tf.int32 and \

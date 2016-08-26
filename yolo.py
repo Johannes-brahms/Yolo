@@ -75,6 +75,12 @@ def conv2d(x, W, b, strides = 1, norm = False):
 
     return x
 
+def one(x):
+
+    maximum = tf.reshape(tf.reduce_max(x, 1), [-1, 1])
+    minimum = tf.reshape(tf.reduce_min(x, 1), [-1, 1])
+    return (maximum - x) / (maximum - minimum)
+
 def maxpool2d(x, k = 2):
     return tf.nn.max_pool(x, ksize = [1, k, k, 1], strides = [1, k, k, 1], padding = 'SAME')
 def avgpool2d(x, k = 2):
@@ -161,7 +167,7 @@ def conv_net(x, weights, biases, n_class, dropout):
     #fc3 = tf.abs(fc3)
     #fc3 = log(fc3, 'fc3 : ')
 
-    return fc3
+    return tf.abs(fc3)
 
 def init(session, saver, pretrained):
 
@@ -286,25 +292,34 @@ def Responsible(center, confidence):
 
     #iou = tf.mul(center, confidence)
 
-    iou = confidence
+    iou = tf.reshape(confidence, [-1, S * S * B])
 
     # find out maximum IoU
 
-    maximum_IoU = tf.reshape(tf.reduce_max(iou, 2), [-1, S * S, 1])
+    #maximum_IoU = tf.reshape(tf.reduce_max(iou, 2), [-1, S * S, 1])
+
+
+    # reshape 49 x 2 to 98 , reduce max find the maximum value
+
+    maximum_IoU = tf.reshape(tf.reduce_max(iou, 1), [-1, 1])
 
     # Create a same shape of tensor as iou 
 
-    _iou = tf.concat(2, [maximum_IoU, maximum_IoU])
+    #_iou = tf.concat(2, [maximum_IoU, maximum_IoU])
 
-    for b in xrange(B - 2):
+    #for b in xrange(B - 2):
 
-        _iou = tf.concat(2, [_iou, maximum_IoU])
+        #_iou = tf.concat(2, [_iou, maximum_IoU])
 
-    maximum_IoU = _iou
+    #maximum_IoU = _iou
+
+
 
     # return the bool type tensor 
 
     res = tf.logical_and(tf.greater(iou, 0),tf.greater_equal(iou, maximum_IoU))
+
+    res = tf.reshape(res, [-1, S * S, B])
 
     return res
 
@@ -380,7 +395,8 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
     
     lcoord = tf.constant(5, dtype = tf.float32)
     lnoobj = tf.constant(0.5, dtype = tf.float32)
-  
+    lcoord2 = tf.constant(2.5, dtype = tf.float32)
+    lnoobj2 = tf.constant(0.5, dtype = tf.float32)
     # forward propagate
 
     pred = conv_net(x, weights, biases, n_class, 1)
@@ -463,7 +479,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
         loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_offset_x, d_offset_y]))     
         loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_offset_w, d_offset_h]))
 
-
+        
         " reality box loss "
 
         pred_offset_bbox = [pred_offset_x, pred_offset_y, pred_offset_w, pred_offset_h]
@@ -482,10 +498,10 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
         d_real_w = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_real_w), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_w), 0.5), tf.float32)), 2)
         d_real_h = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_real_h), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_h), 0.5), tf.float32)), 2)
 
-        loss_real_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_real_x, d_real_y]))     
-        loss_real_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_real_w, d_real_h]))
-
+        loss_real_xy = tf.mul(tf.mul(lcoord2 , tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_real_x, d_real_y]))     
+        loss_real_wh = tf.mul(tf.mul(lcoord2 , tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_real_w, d_real_h]))
         
+
         loss_is_obj = tf.mul(tf.slice(responsible, [0, 0, b], [-1, -1, 1]), dc)
         loss_no_obj = tf.mul(tf.mul(tf.slice(not_responsible, [0, 0, b], [-1,-1, 1]), dc), lnoobj)
 
@@ -494,7 +510,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
         loss_is_obj = log(loss_is_obj, "loss is obj : ")
         loss_no_obj = log(loss_no_obj, "loss no obj : ")
 
-        _loss = tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])
+        _loss = tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh, loss_real_xy, loss_real_wh]), tf.add(loss_is_obj, loss_no_obj)])
 
 
         if loss == None:
@@ -510,13 +526,21 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
     
     # reshape loss [batch, cell, bbox] to [batch, bbox], so we can sum over all bbox
 
-    gt_cls = tf.reshape(tf.slice(pred, [0, 0, 5 * index], [-1,-1,-1]), [-1, S * S, n_class])
+    #gt_cls = tf.reshape(tf.slice(y, [0, 0, 5 * index], [-1,-1,-1]), [-1, S * S, n_class])
+
+    gt_cls = tf.reshape(y[ : , 4: ], [-1, 1, n_class])
+
+    gt_cls = log(gt_cls, 'gt cls : ')
 
     pred_cls = tf.slice(pred, [0, 0, 5 * index], [-1,-1,-1])
 
-    dcls = tf.pow(tf.sub(gt_cls, pred_cls), 2)
+    pred_cls = log(pred_cls, 'pred cls : ')
+
+    dcls = tf.pow(tf.sub(pred_cls, gt_cls), 2)
 
     dcls = tf.reshape(tf.reduce_sum(dcls, 2), [-1, S * S, 1])
+
+    dcls = log(dcls, " d cls : ")
 
     dcls = tf.mul(tf.slice(center, [0, 0, 0], [-1,-1, 1]), dcls)
 
@@ -612,9 +636,15 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
                 print '-----------------------------------------------------------------'
 
-                cost, l_rate = sess.run([tf.reduce_mean(loss), learning_rate], { x : batch_x , y : batch_y })
+                cost, l_rate, res, conf, _dcls = sess.run([tf.reduce_mean(loss), learning_rate, responsible, confidence, dcls], { x : batch_x , y : batch_y })
 
                 print "Iter " , str(step * batch)  + " , Minibatch Loss = " , cost ," , Learning rate : ", l_rate
+
+                #print 'resonsible : ', res[0]
+                #print 'confidence : ', conf[0]
+                #print 'conf : ', conf.shape
+                #print 'dcls : ', _dcls[0]
+                #print 'dcls shape : ', _dcls.shape
 
             
             sess.run(optimizer, { x : batch_x, y : batch_y })
@@ -643,7 +673,7 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 50
+    batch = 5
     display = 1
     #dataset = 'plate_300'
     dataset = 'char'
