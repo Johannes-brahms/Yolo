@@ -1,5 +1,5 @@
 from yolo_utils import cell_locate, convert_to_one, convert_to_reality
-from imdb import load_imdb_from_raw
+from imdbs import load_imdb_from_raw
 from utils import IoU
 from skimage import io
 import tensorflow as tf
@@ -138,7 +138,7 @@ def save(session, saver, prefix, step):
     return p
 
 
-def Confidence(pred, y):
+def get_confidence(pred, y):
     
     confidence = None
 
@@ -147,24 +147,10 @@ def Confidence(pred, y):
         pred_x = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 0], [-1, -1, 1]), [-1, S * S ])
         pred_y = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 1], [-1, -1, 1]), [-1, S * S ])
         pred_w = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1]), [-1, S * S ])
-        pred_h = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1]), [-1, S * S ])
-        
-        """
-        pred_x = log(pred_x, 'pred one bbox x : ')
-        pred_y = log(pred_y, 'pred one bbox y : ')
-        pred_w = log(pred_w, 'pred one bbox w : ')
-        pred_h = log(pred_h, 'pred one bbox h : ')
-        """
+        pred_h = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1]), [-1, S * S ]) 
    
         pred_bbox = [pred_x, pred_y, pred_w, pred_h]    
         pred_reality_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
-
-        """
-        pred_reality_bbox[0] = log(pred_reality_bbox[0], 'pred bbox x : ')
-        pred_reality_bbox[1] = log(pred_reality_bbox[1], 'pred bbox y : ')
-        pred_reality_bbox[2] = log(pred_reality_bbox[2], 'pred bbox w : ')
-        pred_reality_bbox[3] = log(pred_reality_bbox[3], 'pred bbox h : ')
-        """
 
         temp = tf.reshape(IoU(pred_reality_bbox, y[:,:4]), [-1, S * S, 1])
 
@@ -179,15 +165,14 @@ def Confidence(pred, y):
     assert confidence.dtype == tf.float32
 
     return confidence
-
+"""
 def Center(groundtruth, batch):
 
-    """
+    
+    #check which cell is the center of the object located in
 
-    check which cell is the center of the object located in
 
-
-    """
+    
 
 
     # grid cell index tensor shape : [ batch , cells , one of bboxes ]
@@ -209,8 +194,8 @@ def Center(groundtruth, batch):
     c = tf.reshape(tf.sparse_tensor_to_dense(tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])), [-1, S * S, 1])
  
     return c
-
-def Responsible(center, confidence):
+"""
+def Responsible(confidence):
 
     iou = tf.reshape(confidence, [-1, S * S * B])
 
@@ -298,15 +283,17 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
     pred = conv_net(x, weights, biases, n_class, 1)
     
-    confidence = Confidence(pred, y)
+    confidence = get_confidence(pred, y)
 
-    center = Center(y, batch)
+    #center = Center(y, batch)
     
-    responsible = Responsible(center, confidence)
+    responsible = Responsible(confidence)
 
     not_responsible = tf.cast(tf.logical_not(responsible), tf.float32)
 
     responsible = tf.cast(responsible, tf.float32) 
+
+    center = tf.cast(tf.cast(tf.reshape(tf.reduce_sum(responsible, 2), [-1, S * S, 1]), tf.bool), tf.float32)
 
     # build loss function
 
@@ -329,11 +316,11 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
 
         
-        pred_x = log(pred_offset_x, 'pred  X  : ')
-        pred_y = log(pred_offset_y, 'pred  Y  : ')
-        pred_w = log(pred_offset_w, 'pred  W  : ')
-        pred_h = log(pred_offset_h, 'pred  H  : ')
-        pred_c = log(pred_confidence, 'pred  C  : ')
+        pred_offset_x = log(pred_offset_x, 'pred  X  : ')
+        pred_offset_y = log(pred_offset_y, 'pred  Y  : ')
+        pred_offset_w = log(pred_offset_w, 'pred  W  : ')
+        pred_offset_h = log(pred_offset_h, 'pred  H  : ')
+        pred_confidence = log(pred_confidence, 'pred  C  : ')
         
 
         gt_confidence = tf.slice(confidence, [0, 0, b], [-1, -1, 1])
@@ -465,7 +452,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
             batch_y = objects.next_batch()
 
             learning_rate = tf.train.exponential_decay(
-                                0.00001,                # Base learning rate.
+                                0.001,                # Base learning rate.
                                 step * batch,  # Current index into the dataset.
                                 10000,          # Decay step.
                                 0.9,                # Decay rate.
@@ -481,7 +468,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
                 print "Iter " , str(step * batch)  + " , Minibatch Loss = " , cost ," , Learning rate : ", l_rate
 
-                print 'confidence : ',  _confidence[0]
+                #print 'confidence : ',  _confidence[0]
             
             sess.run(optimizer, { x : batch_x, y : batch_y })
 
@@ -519,7 +506,7 @@ if __name__ == '__main__':
 
     n_class = len(label)
 
-    B = 2
+    B = 1
     S = 7
 
     
@@ -528,8 +515,8 @@ if __name__ == '__main__':
     if args.mode == 'train':
 
         
-        learning_rate = 0.00001
-        training_iters = 20000
+        learning_rate = 0.001
+        training_iters = 150
         train(learning_rate, training_iters, batch, label, dataset, display = 1, snapshot = args.snapshot, pretrained_weights = args.weights)
     
     elif args.mode == 'test':

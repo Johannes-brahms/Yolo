@@ -7,6 +7,8 @@ def log(tensor, string):
 
 def IoU(bbox, gt):
 
+    # bbox = [ x , y , w , h ] ( x , y  left up)
+
     shape = [-1, 1]
 
     x1 = tf.maximum(tf.cast(bbox[0], tf.float32), tf.reshape(tf.cast(gt[:,0], tf.float32), shape))
@@ -14,14 +16,6 @@ def IoU(bbox, gt):
     x2 = tf.minimum(tf.cast(bbox[2] + bbox[0], tf.float32), tf.reshape(tf.cast(gt[:,2] + gt[:,0], tf.float32), shape))
     y2 = tf.minimum(tf.cast(bbox[3] + bbox[1], tf.float32), tf.reshape(tf.cast(gt[:,3] + gt[:,1], tf.float32), shape))
 
-    """
-    x1_positive_mask = tf.greater(bbox[0], 0)
-    y1_positive_mask = tf.greater(bbox[1], 0)
-    x2_positive_mask = tf.greater(bbox[2], 0)
-    y2_positive_mask = tf.greater(bbox[3], 0)
-    
-    positive_mask = tf.cast(tf.logical_and(tf.logical_and(x1_positive_mask, y1_positive_mask), tf.logical_and(x2_positive_mask, y2_positive_mask)), tf.float32)
-    """
 
     inter_w = tf.sub(x2,x1)
 
