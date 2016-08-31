@@ -88,18 +88,21 @@ def convert_to_reality(bbox, width, height, S):
     cell_h = tf.cast(height / S, tf.float32)
 
     
-    real_x_left_up = tf.reshape((cell_coord_x + relative_center_x) * cell_w - w / 2,[-1])
+    #real_x_left_up = tf.reshape((cell_coord_x + relative_center_x) * cell_w - w / 2,[-1])
 
-    real_y_left_up = tf.reshape((cell_coord_y + relative_center_y) * cell_h - h / 2, [-1])
+    #real_y_left_up = tf.reshape((cell_coord_y + relative_center_y) * cell_h - h / 2, [-1])
 
-    #real_x_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_x, cell_w), [-1]), tf.cast(tf.mul(relative_center_x, cell_w), tf.int32)), tf.cast(tf.mul(tf.cast(w, tf.float32), 0.5), tf.int32))
-    #real_y_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_y, cell_h), [-1]), tf.cast(tf.mul(relative_center_y, cell_h), tf.int32)), tf.cast(tf.mul(tf.cast(h, tf.float32), 0.5), tf.int32))
+    real_x_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_x, cell_w), [-1]), relative_center_x * cell_w), tf.cast(w * 0.5, tf.float32))
+    real_y_left_up = tf.sub(tf.add(tf.reshape(tf.mul(cell_coord_y, cell_h), [-1]), relative_center_y * cell_h), tf.cast(h * 0.5, tf.float32))
 
 
     real_x_left_up = tf.cast(tf.nn.relu(real_x_left_up), tf.int32)
     real_y_left_up = tf.cast(tf.nn.relu(real_y_left_up), tf.int32)
     w = tf.cast(w, tf.int32)
     h = tf.cast(h, tf.int32)
+
+    print 'real x ', relative_center_x.get_shape()
+    print 'real w' , w.get_shape()
 
 
 

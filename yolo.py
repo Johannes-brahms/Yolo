@@ -299,26 +299,31 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
 
         dx = tf.pow(tf.sub(tf.cast(pred_reality_x, tf.float32), tf.cast(gt_x, tf.float32)), 2)
         dy = tf.pow(tf.sub(tf.cast(pred_reality_y, tf.float32), tf.cast(gt_y, tf.float32)), 2)
-        dw = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_reality_w), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_w), 1), tf.float32)), 2)
+        dw = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_reality_w), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_w), 0.5), tf.float32)), 2)
         dh = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_reality_h), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_h), 0.5), tf.float32)), 2)
         d_confidence = tf.pow(tf.sub(pred_confidence, gt_confidence), 2) 
         
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [dx, dy]))     
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [dw, dh]))
+        #loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [dx, dy])) * 0     
+        #loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [dw, dh])) * 0
+
+        res = tf.slice(responsible,[0, 0, b],[-1,-1, 1])
+        not_res = tf.slice(not_responsible,[0, 0, b],[-1,-1, 1])
+        loss_coord_xywh =   lcoord * tf.concat(2, [dx, dy, dw, dh])
         
-        loss_is_obj = tf.mul(tf.slice(responsible, [0, 0, b], [-1, -1, 1]), d_confidence)
-        loss_no_obj = tf.mul(tf.mul(tf.slice(not_responsible, [0, 0, b], [-1,-1, 1]), d_confidence), lnoobj)
+        loss_is_obj = d_confidence
+        #loss_no_obj = lnoobj * not_res * d_confidence
 
         loss_is_obj = log(loss_is_obj, "loss is obj : ")
-        loss_no_obj = log(loss_no_obj, "loss no obj : ")
+        #loss_no_obj = log(loss_no_obj, "loss no obj : ")
 
         if loss == None:
 
-            loss = tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])
-
+            #loss = tf.concat(2, [loss_coord_xywh, tf.add(loss_is_obj, loss_no_obj)])
+            loss = tf.concat(2, [loss_coord_xywh, loss_is_obj])
         else:
 
-            loss = tf.concat(2, [loss, tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])])
+            #loss = tf.concat(2, [loss, tf.concat(2, [loss_coord_xywh, tf.add(loss_is_obj, loss_no_obj)])])
+            loss = tf.concat(2, [loss, tf.concat(2, [loss_coord_xywh, loss_is_obj])])
 
         index = b + 1
     
@@ -411,7 +416,7 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
             batch_y = objects.next_batch()
 
             learning_rate = tf.train.exponential_decay(
-                                0.001,                # Base learning rate.
+                                0.01,                # Base learning rate.
                                 step * batch,  # Current index into the dataset.
                                 10000,          # Decay step.
                                 0.9,                # Decay rate.
@@ -452,7 +457,7 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    batch = 10
+    batch = 50
     display = 1
     #dataset = 'plate_300'
     dataset = 'char'
@@ -475,7 +480,7 @@ if __name__ == '__main__':
 
         
         learning_rate = 0.001
-        training_iters = 150
+        training_iters = 10000
         train(learning_rate, training_iters, batch, label, dataset, display = 1, snapshot = args.snapshot, pretrained_weights = args.weights)
     
     elif args.mode == 'test':
