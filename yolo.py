@@ -149,7 +149,8 @@ def get_confidence(pred, y):
         pred_w = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 2], [-1, -1, 1]), [-1, S * S ])
         pred_h = tf.reshape(tf.slice(pred, [0, 0, b * 5 + 3], [-1, -1, 1]), [-1, S * S ]) 
    
-        pred_bbox = [pred_x, pred_y, pred_w, pred_h]    
+        pred_bbox = [pred_x, pred_y, pred_w, pred_h]
+
         pred_reality_bbox = convert_to_reality(pred_bbox, n_width, n_height, S)
 
         temp = tf.reshape(IoU(pred_reality_bbox, y[:,:4]), [-1, S * S, 1])
@@ -165,36 +166,6 @@ def get_confidence(pred, y):
     assert confidence.dtype == tf.float32
 
     return confidence
-"""
-def Center(groundtruth, batch):
-
-    
-    #check which cell is the center of the object located in
-
-
-    
-
-
-    # grid cell index tensor shape : [ batch , cells , one of bboxes ]
-
-    # find out which grid cell is the bbox center located in
-
-    grid_cell_index = tf.cast(tf.reshape(cell_locate((n_width, n_height), groundtruth, S), [-1]), tf.int32)
-
-    # generate index for terrible tensorflow slicing tensor
-
-    index = tf.range(0, batch)
-
-    # pack index with grid cell index 
-
-    indices = tf.cast(tf.pack([index, grid_cell_index], axis = 1), tf.int64)
-
-    # set the " center variable " to one ( which is boolean type ), in terms of grid cell index  
-
-    c = tf.reshape(tf.sparse_tensor_to_dense(tf.SparseTensor(indices = indices, values = tf.ones(batch), shape = [batch , S * S])), [-1, S * S, 1])
- 
-    return c
-"""
 def Responsible(confidence):
 
     iou = tf.reshape(confidence, [-1, S * S * B])
@@ -284,8 +255,6 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
     pred = conv_net(x, weights, biases, n_class, 1)
     
     confidence = get_confidence(pred, y)
-
-    #center = Center(y, batch)
     
     responsible = Responsible(confidence)
 
@@ -302,9 +271,6 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
     gt_w = tf.reshape(tf.slice(y, [0, 2], [-1, 1]), [-1, 1, 1])
     gt_h = tf.reshape(tf.slice(y, [0, 3], [-1, 1]), [-1, 1, 1])
     
-    bbox = [gt_x, gt_y, gt_w, gt_h]
- 
-    gt_offset_x, gt_offset_y, gt_offset_w, gt_offset_h = convert_to_one(bbox, n_width, n_height, S)
 
     for b in xrange(B):
 
@@ -315,40 +281,34 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
         pred_confidence = tf.slice(pred, [0, 0, b * 5 + 4], [-1, -1, 1])
 
 
-        
-        pred_offset_x = log(pred_offset_x, 'pred  X  : ')
-        pred_offset_y = log(pred_offset_y, 'pred  Y  : ')
-        pred_offset_w = log(pred_offset_w, 'pred  W  : ')
-        pred_offset_h = log(pred_offset_h, 'pred  H  : ')
-        pred_confidence = log(pred_confidence, 'pred  C  : ')
-        
+        pred_bbox = [pred_offset_x, pred_offset_y, pred_offset_w, pred_offset_h]
 
+        pred_reality_x, pred_reality_y, pred_reality_w, pred_reality_h = convert_to_reality(pred_bbox, n_width, n_height, S)
+
+
+        pred_reality_x = tf.cast(pred_reality_x, tf.float32)
+        pred_reality_y = tf.cast(pred_reality_y, tf.float32)
+        pred_reality_w = tf.cast(pred_reality_w, tf.float32)
+        pred_reality_h = tf.cast(pred_reality_h, tf.float32)
+
+
+        
         gt_confidence = tf.slice(confidence, [0, 0, b], [-1, -1, 1])
 
         # predict confidence and groundtruth confidence, so the predictor can learn if it contains a objects
 
-        d_offset_x = tf.pow(tf.sub(tf.cast(pred_offset_x, tf.float32), tf.cast(gt_offset_x, tf.float32)), 2)
-        d_offset_y = tf.pow(tf.sub(tf.cast(pred_offset_y, tf.float32), tf.cast(gt_offset_y, tf.float32)), 2)
-        d_offset_w = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_offset_w), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_offset_w), 0.5), tf.float32)), 2)
-        d_offset_h = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_offset_h), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_offset_h), 0.5), tf.float32)), 2)
+        dx = tf.pow(tf.sub(tf.cast(pred_reality_x, tf.float32), tf.cast(gt_x, tf.float32)), 2)
+        dy = tf.pow(tf.sub(tf.cast(pred_reality_y, tf.float32), tf.cast(gt_y, tf.float32)), 2)
+        dw = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_reality_w), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_w), 1), tf.float32)), 2)
+        dh = tf.pow(tf.sub(tf.cast(tf.pow(tf.abs(pred_reality_h), 0.5), tf.float32), tf.cast(tf.pow(tf.abs(gt_h), 0.5), tf.float32)), 2)
         d_confidence = tf.pow(tf.sub(pred_confidence, gt_confidence), 2) 
         
-        """
-        dx = log(dx, 'dx : ')
-        dy = log(dy, 'dy : ')
-        dc = log(dc, 'dc : ')
-        dw = log(dw, 'dw : ')
-        """
-        
-
-        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_offset_x, d_offset_y]))     
-        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [d_offset_w, d_offset_h]))
+        loss_coord_xy = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [dx, dy]))     
+        loss_coord_wh = tf.mul(tf.mul(lcoord, tf.slice(responsible,[0, 0, b],[-1,-1, 1])), tf.concat(2, [dw, dh]))
         
         loss_is_obj = tf.mul(tf.slice(responsible, [0, 0, b], [-1, -1, 1]), d_confidence)
         loss_no_obj = tf.mul(tf.mul(tf.slice(not_responsible, [0, 0, b], [-1,-1, 1]), d_confidence), lnoobj)
 
-        #loss_coord_xy = log(tf.reduce_mean(loss_coord_xy), "loss xy : ")
-        #loss_coord_wh = log(tf.reduce_mean(loss_coord_wh), "loss wh : ")
         loss_is_obj = log(loss_is_obj, "loss is obj : ")
         loss_no_obj = log(loss_no_obj, "loss no obj : ")
 
@@ -361,7 +321,6 @@ def train(learning_rate, iters, batch, label, dataset, n_bbox = 2, n_cell = 7, n
             loss = tf.concat(2, [loss, tf.concat(2, [tf.concat(2, [loss_coord_xy, loss_coord_wh]), tf.add(loss_is_obj, loss_no_obj)])])
 
         index = b + 1
-
     
     # reshape loss [batch, cell, bbox] to [batch, bbox], so we can sum over all bbox
 
